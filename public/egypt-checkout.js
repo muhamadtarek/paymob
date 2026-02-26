@@ -14,7 +14,9 @@ async function getCartData() {
         return {
             total: cart.total_price / 100,
             items: cart.items.map((item) => ({
-                id: item.variant_id?.toString() || item.product_id?.toString(),
+                // IMPORTANT: Paymob flow uses Shopify Draft Orders which require variant_id
+                id: item.variant_id?.toString(),
+                variantId: item.variant_id?.toString(),
                 name: item.product_title,
                 category: item.product_type,
                 price: item.price / 100,

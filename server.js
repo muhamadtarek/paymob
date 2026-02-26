@@ -337,6 +337,19 @@ app.post('/api/checkout/egypt', async (req, res) => {
         });
 
     } catch (error) {
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+
+        // Axios errors (Shopify/Paymob) often contain useful JSON in error.response.data
+        if (status) {
+            console.error('Checkout upstream error:', status, data || error.message);
+            return res.status(status).json({
+                success: false,
+                error: (data && (data.error || data.errors || data.message)) || error.message,
+                details: data
+            });
+        }
+
         console.error('Checkout error:', error);
         res.status(500).json({
             success: false,
@@ -726,8 +739,9 @@ function getCartPayloadCheckoutPageHtml(cart) {
                 };
 
                 var cartItems = (cart.items || []).map(function(item) {
+                    var rawVariant = item.variantId || item.variant_id || item.id;
                     return {
-                        variantId: 'gid://shopify/ProductVariant/' + item.id,
+                        variantId: 'gid://shopify/ProductVariant/' + rawVariant,
                         quantity: item.quantity,
                         name: item.name,
                         price: item.price,
