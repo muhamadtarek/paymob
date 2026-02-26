@@ -214,7 +214,6 @@ function getPaymobMethodConfig(paymobMethod) {
     if (method === 'kiosk') {
         return {
             integrationId: process.env.PAYMOB_INTEGRATION_ID_KIOSK || defaults.integrationId,
-            iframeId: process.env.PAYMOB_IFRAME_ID_KIOSK || defaults.iframeId
         };
     }
 
