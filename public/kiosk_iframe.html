@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        @font-face {
+            font-family: Avenir;
+            src: url("/static/fonts/AvenirLTStd-Roman.ttf");
+        }
+        input::-webkit-input-placeholder,
+        textarea::-webkit-input-placeholder {
+            color: #80959E;
+            font-size: 16px;
+            font-family: Avenir;
+            font-weight: 400;
+        }
+        input::-moz-placeholder { color: #80959E; font-size: 16px; font-family: Avenir; font-weight: 400; }
+        input:-ms-input-placeholder { color: #80959E; font-size: 16px; font-family: Avenir; font-weight: 400; }
+
+        body { font-family: Avenir; background-color: transparent; }
+        p { padding: 0; margin: 0; }
+
+        .iframeOut {
+            display: flex;
+            justify-content: center;
+            margin: 100px 0;
+        }
+        .iframBody {
+            width: 35%;
+            background: #fff;
+            filter: drop-shadow(0px 0px 71px rgba(10, 51, 69, 0.07));
+            border-radius: 10px;
+            padding: 20px;
+        }
+        @media (max-width: 768px) {
+            .iframBody { width: 70%; height: auto; margin-top: 50px; }
+        }
+
+        header {
+            border-bottom: 1px solid #e1ecf1;
+            text-align: center;
+            padding-top: 30px;
+            padding-bottom: 20px;
+        }
+        .iframeType {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 40px;
+            align-items: center;
+        }
+        .iframeType p { font-size: 18px; color: #0a384b; }
+        .iframeType div { display: flex; align-items: center; }
+        .iframeType div img { margin-right: 10px; }
+
+        /* Kiosk logo row */
+        .kioskLogos {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .kioskBadge {
+            background: #f5a623;
+            color: #fff;
+            font-family: Avenir;
+            font-weight: 800;
+            font-size: 11px;
+            padding: 4px 9px;
+            border-radius: 6px;
+            letter-spacing: 0.5px;
+        }
+        .kioskBadge.aman { background: #005b99; }
+        .kioskBadge.masary { background: #e2001a; }
+        .kioskBadge.fawry { background: #f5a623; color: #fff; }
+
+        form { padding: 30px 0; }
+
+        .inputDiv {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-direction: column;
+        }
+        .inputDiv label {
+            font-size: 17px;
+            margin-bottom: 10px;
+            color: #0a384b;
+        }
+        .inputDiv label span { font-size: 10px; }
+        .inputDiv input {
+            height: 55px;
+            width: 100%;
+            border-radius: 10px;
+            background: #efefef99;
+            outline: 0;
+            border: 1px solid #f9fafa;
+            padding-left: 10px;
+            font-weight: 900;
+            font-size: 19px;
+            line-height: 20.4px;
+            text-align: left;
+            color: #0a384b;
+            box-sizing: border-box;
+        }
+        .inputDiv input:focus {
+            border: 1px solid #28AAE1;
+            transition: .3s ease;
+            background: #fff;
+            box-shadow: 0px -1px 71px rgba(74, 74, 74, 0.07);
+        }
+
+        .infoBox {
+            background: #f0f9ff;
+            border: 1px solid #cce8f4;
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 20px;
+        }
+        .infoBox p {
+            font-size: 14px;
+            color: #0a384b;
+            line-height: 22px;
+        }
+        .infoBox p strong { font-weight: 900; }
+
+        .steps {
+            margin-bottom: 20px;
+        }
+        .steps p {
+            font-size: 15px;
+            color: #0a384b;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            line-height: 22px;
+        }
+        .steps p .stepNum {
+            background: #28AAE1;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 900;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .iframeBtn {
+            width: 152px;
+            height: 49px;
+            background-color: #31D097;
+            color: #fff;
+            font-family: Avenir;
+            border: 0;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+            font-size: 20px;
+            margin: auto;
+            margin-top: 20px;
+            display: block;
+        }
+        footer {
+            font-family: Avenir;
+            font-weight: 800;
+            font-size: 16px;
+            color: #80959E;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        footer img { margin-left: 20px; height: 25px; width: 100px; }
+    </style>
+</head>
+<body>
+<div class="iframeOut">
+    <div class="iframBody">
+        <header>
+            <div class="iframeType">
+                <p>Cash / Kiosk</p>
+                <div class="kioskLogos">
+                    <span class="kioskBadge fawry">FAWRY</span>
+                    <span class="kioskBadge aman">AMAN</span>
+                    <span class="kioskBadge masary">MASARY</span>
+                </div>
+            </div>
+        </header>
+
+        <form id="paymob_checkout">
+            <div class="inputDiv">
+                <label>Full Name</label>
+                <input placeholder="e.g. Ahmed Mohamed" required type="text" paymob_field="first_name">
+            </div>
+            <div class="inputDiv">
+                <label>Mobile Number</label>
+                <input placeholder="e.g. 01XXXXXXXXX" required maxlength="11" type="tel" paymob_field="phone_number">
+            </div>
+            <div class="inputDiv">
+                <label>Email Address <span>(Optional)</span></label>
+                <input placeholder="e.g. ahmed@example.com" type="email" paymob_field="email">
+            </div>
+
+            <input type="hidden" value="CASH" paymob_field="subtype">
+
+            <div class="infoBox">
+                <p>After clicking <strong>Pay</strong>, you will receive a <strong>payment reference number</strong>. Use it to pay at any supported kiosk near you.</p>
+            </div>
+
+            <div class="steps">
+                <p><span class="stepNum">1</span> Submit your details to get a reference number.</p>
+                <p><span class="stepNum">2</span> Visit a Fawry, Aman, or Masary kiosk.</p>
+                <p><span class="stepNum">3</span> Provide the reference number and pay in cash.</p>
+            </div>
+
+            <input class="iframeBtn" type="submit" value="Pay">
+        </form>
+
+        <footer>
+            Powered by
+            <a href="#"><img src="/static/img/paymob_new.svg"></a>
+        </footer>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        @font-face {
+            font-family: Avenir;
+            src: url("/static/fonts/AvenirLTStd-Roman.ttf");
+        }
+        input::-webkit-input-placeholder,
+        textarea::-webkit-input-placeholder {
+            color: #80959E;
+            font-size: 16px;
+            font-family: Avenir;
+            font-weight: 400;
+        }
+        input::-moz-placeholder { color: #80959E; font-size: 16px; font-family: Avenir; font-weight: 400; }
+        input:-ms-input-placeholder { color: #80959E; font-size: 16px; font-family: Avenir; font-weight: 400; }
+
+        body { font-family: Avenir; background-color: transparent; }
+        p { padding: 0; margin: 0; }
+
+        .iframeOut {
+            display: flex;
+            justify-content: center;
+            margin: 100px 0;
+        }
+        .iframBody {
+            width: 35%;
+            background: #fff;
+            filter: drop-shadow(0px 0px 71px rgba(10, 51, 69, 0.07));
+            border-radius: 10px;
+            padding: 20px;
+        }
+        @media (max-width: 768px) {
+            .iframBody { width: 70%; height: auto; margin-top: 50px; }
+        }
+
+        header {
+            border-bottom: 1px solid #e1ecf1;
+            text-align: center;
+            padding-top: 30px;
+            padding-bottom: 20px;
+        }
+        .iframeType {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 40px;
+        }
+        .iframeType p { font-size: 18px; color: #0a384b; }
+        .iframeType div { display: flex; align-items: center; gap: 8px; }
+
+        /* Wallet provider badge chips */
+        .walletBadge {
+            font-family: Avenir;
+            font-weight: 900;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.4px;
+            color: #fff;
+        }
+        .walletBadge.vodafone { background: #e60000; }
+        .walletBadge.etisalat { background: #00a651; }
+        .walletBadge.orange  { background: #ff6600; }
+        .walletBadge.we      { background: #6b2d8b; }
+
+        /* Wallet selector tabs */
+        .walletTabs {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+        .walletTab {
+            flex: 1;
+            padding: 12px 8px;
+            border-radius: 10px;
+            border: 2px solid #e1ecf1;
+            background: #fafafa;
+            cursor: pointer;
+            text-align: center;
+            font-family: Avenir;
+            font-size: 13px;
+            font-weight: 800;
+            color: #80959E;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+        .walletTab span.dot {
+            display: block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin: 0 auto 6px auto;
+        }
+        .walletTab.vodafone.active, .walletTab.vodafone:hover { border-color: #e60000; color: #e60000; background: #fff5f5; }
+        .walletTab.vodafone .dot { background: #e60000; }
+        .walletTab.etisalat.active, .walletTab.etisalat:hover { border-color: #00a651; color: #00a651; background: #f0fff7; }
+        .walletTab.etisalat .dot { background: #00a651; }
+        .walletTab.orange.active, .walletTab.orange:hover { border-color: #ff6600; color: #ff6600; background: #fff7f0; }
+        .walletTab.orange .dot { background: #ff6600; }
+        .walletTab.we.active, .walletTab.we:hover { border-color: #6b2d8b; color: #6b2d8b; background: #f8f0ff; }
+        .walletTab.we .dot { background: #6b2d8b; }
+
+        /* Default inactive dot */
+        .walletTab:not(.active) .dot { background: #d0dde3; }
+        .walletTab:not(.active) { color: #80959E; border-color: #e1ecf1; background: #fafafa; }
+
+        form { padding: 20px 0 30px; }
+
+        .inputDiv {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 20px;
+        }
+        .inputDiv label {
+            font-size: 17px;
+            margin-bottom: 10px;
+            color: #0a384b;
+        }
+        .inputDiv label span { font-size: 10px; color: #80959E; }
+        .inputDiv input {
+            height: 55px;
+            width: 100%;
+            border-radius: 10px;
+            background: #efefef99;
+            outline: 0;
+            border: 1px solid #f9fafa;
+            padding-left: 10px;
+            font-weight: 900;
+            font-size: 19px;
+            line-height: 20.4px;
+            text-align: left;
+            color: #0a384b;
+            box-sizing: border-box;
+        }
+        .inputDiv input:focus {
+            border: 1px solid #28AAE1;
+            transition: .3s ease;
+            background: #fff;
+            box-shadow: 0px -1px 71px rgba(74, 74, 74, 0.07);
+        }
+
+        /* Prefix on phone input */
+        .phoneWrapper {
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+        .phonePrefix {
+            position: absolute;
+            left: 14px;
+            font-size: 17px;
+            font-weight: 900;
+            color: #0a384b;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .phoneWrapper input { padding-left: 52px; }
+
+        .infoBox {
+            background: #f0f9ff;
+            border: 1px solid #cce8f4;
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 20px;
+        }
+        .infoBox p {
+            font-size: 14px;
+            color: #0a384b;
+            line-height: 22px;
+        }
+        .infoBox p strong { font-weight: 900; }
+
+        /* Vodafone-note style banner */
+        .vodafoneNote {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: #fff5f5;
+            border: 1px solid #ffd5d5;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+        }
+        .vodafoneNote .providerDot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 5px;
+        }
+        .vodafoneNote p { font-size: 13px; color: #7a1a1a; line-height: 20px; }
+        .walletHint { display: none; }
+        .walletHint.active { display: flex; }
+
+        .iframeBtn {
+            width: 152px;
+            height: 49px;
+            background-color: #31D097;
+            color: #fff;
+            font-family: Avenir;
+            border: 0;
+            border-radius: 10px;
+            outline: none;
+            cursor: pointer;
+            font-size: 20px;
+            margin: auto;
+            margin-top: 20px;
+            display: block;
+        }
+
+        footer {
+            font-family: Avenir;
+            font-weight: 800;
+            font-size: 16px;
+            color: #80959E;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        footer img { margin-left: 20px; height: 25px; width: 100px; }
+    </style>
+</head>
+<body>
+<div class="iframeOut">
+    <div class="iframBody">
+        <header>
+            <div class="iframeType">
+                <p>Mobile Wallet</p>
+                <div>
+                    <span class="walletBadge vodafone">VF Cash</span>
+                    <span class="walletBadge etisalat">E-Cash</span>
+                    <span class="walletBadge orange">Orange</span>
+                    <span class="walletBadge we">WE</span>
+                </div>
+            </div>
+
+            <div class="walletTabs">
+                <button type="button" class="walletTab vodafone active" onclick="selectWallet('vodafone', '#e60000', 'Vodafone Cash')">
+                    <span class="dot"></span>
+                    Vodafone
+                </button>
+                <button type="button" class="walletTab etisalat" onclick="selectWallet('etisalat', '#00a651', 'E-Cash')">
+                    <span class="dot"></span>
+                    Etisalat
+                </button>
+                <button type="button" class="walletTab orange" onclick="selectWallet('orange', '#ff6600', 'Orange Cash')">
+                    <span class="dot"></span>
+                    Orange
+                </button>
+                <button type="button" class="walletTab we" onclick="selectWallet('we', '#6b2d8b', 'WE Pay')">
+                    <span class="dot"></span>
+                    WE
+                </button>
+            </div>
+        </header>
+
+        <form id="paymob_checkout">
+            <input type="hidden" id="wallet_subtype" value="WALLET" paymob_field="subtype">
+            <input type="hidden" id="wallet_provider" value="vodafone" paymob_field="wallet_id">
+
+            <div class="inputDiv">
+                <label>Registered Wallet Number</label>
+                <div class="phoneWrapper">
+                    <span class="phonePrefix">+20</span>
+                    <input
+                        id="walletPhone"
+                        placeholder="01XXXXXXXXX"
+                        required
+                        maxlength="11"
+                        type="tel"
+                        paymob_field="phone_number"
+                    >
+                </div>
+            </div>
+
+            <!-- Vodafone hint -->
+            <div class="walletHint vodafone active" id="hint_vodafone">
+                <div class="vodafoneNote" style="background:#fff5f5;border-color:#ffd5d5;">
+                    <span class="providerDot" style="background:#e60000;"></span>
+                    <p>Make sure your <strong>Vodafone Cash</strong> wallet is active. You'll receive a push notification on your phone to confirm the payment.</p>
+                </div>
+            </div>
+
+            <!-- Etisalat hint -->
+            <div class="walletHint etisalat" id="hint_etisalat">
+                <div class="vodafoneNote" style="background:#f0fff7;border-color:#b3f0d0;">
+                    <span class="providerDot" style="background:#00a651;"></span>
+                    <p>Make sure your <strong>Etisalat Cash</strong> (E-Cash) wallet is active. Approve the payment via the push notification.</p>
+                </div>
+            </div>
+
+            <!-- Orange hint -->
+            <div class="walletHint orange" id="hint_orange">
+                <div class="vodafoneNote" style="background:#fff7f0;border-color:#ffd5b0;">
+                    <span class="providerDot" style="background:#ff6600;"></span>
+                    <p>Make sure your <strong>Orange Cash</strong> wallet is active. A payment prompt will be sent to your registered number.</p>
+                </div>
+            </div>
+
+            <!-- WE hint -->
+            <div class="walletHint we" id="hint_we">
+                <div class="vodafoneNote" style="background:#f8f0ff;border-color:#dab5f5;">
+                    <span class="providerDot" style="background:#6b2d8b;"></span>
+                    <p>Make sure your <strong>WE Pay</strong> wallet is active. Confirm the payment through the push notification sent to your phone.</p>
+                </div>
+            </div>
+
+            <div class="infoBox">
+                <p>Enter the mobile number linked to your wallet. A <strong>payment request</strong> will be sent directly to your phone for approval.</p>
+            </div>
+
+            <input class="iframeBtn" type="submit" id="payBtn" value="Pay">
+        </form>
+
+        <footer>
+            Powered by
+            <a href="#"><img src="/static/img/paymob_new.svg"></a>
+        </footer>
+    </div>
+</div>
+
+<script>
+    function selectWallet(provider, color, label) {
+        // Update tabs
+        document.querySelectorAll('.walletTab').forEach(t => t.classList.remove('active'));
+        document.querySelector('.walletTab.' + provider).classList.add('active');
+
+        // Update hidden fields
+        document.getElementById('wallet_provider').value = provider;
+
+        // Show correct hint
+        document.querySelectorAll('.walletHint').forEach(h => h.classList.remove('active'));
+        document.getElementById('hint_' + provider).classList.add('active');
+
+        // Update button color to match provider
+        document.getElementById('payBtn').style.backgroundColor = color;
+    }
+</script>
+</body>
+</html>
