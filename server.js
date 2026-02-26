@@ -211,17 +211,14 @@ function getPaymobMethodConfig(paymobMethod) {
         };
     }
 
-    if (method === 'kiosk') {
+    if (method === 'card') {
         return {
-            integrationId: process.env.PAYMOB_INTEGRATION_ID_KIOSK || defaults.integrationId,
+            integrationId: process.env.PAYMOB_INTEGRATION_ID_CARD || defaults.integrationId,
+            iframeId: process.env.PAYMOB_IFRAME_ID_CARD || defaults.iframeId
         };
     }
 
-    // default to card
-    return {
-        integrationId: process.env.PAYMOB_INTEGRATION_ID_CARD || defaults.integrationId,
-        iframeId: process.env.PAYMOB_IFRAME_ID_CARD || defaults.iframeId
-    };
+    return defaults;
 }
 
 /**
@@ -611,7 +608,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
                     <div class="paymob-options">
                         <label><input type="radio" name="paymob_method" value="card" checked /> Card</label>
                         <label><input type="radio" name="paymob_method" value="wallet" /> Mobile wallet</label>
-                        <label><input type="radio" name="paymob_method" value="kiosk" /> Kiosk / cash</label>
+                        <label><input type="radio" name="paymob_method" value="cash" /> Cash</label>
                     </div>
                     <p class="note">Payment is securely processed by Paymob.</p>
                 </div>
