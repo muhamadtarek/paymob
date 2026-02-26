@@ -2,16 +2,26 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-const CheckoutButton = ({ cartItems, customer }) => {
+const CheckoutButton = ({ cartItems, customer, cartEndpoint }) => {
     const [loading, setLoading] = useState(false);
 
     const handleCheckout = async () => {
         setLoading(true);
 
         try {
+            let effectiveCartItems = cartItems;
+            let effectiveCustomer = customer;
+
+            // Optionally fetch cart & customer data from a different endpoint
+            if (cartEndpoint && (!effectiveCartItems || !effectiveCustomer)) {
+                const cartResponse = await axios.get(cartEndpoint);
+                effectiveCartItems = cartResponse.data.cartItems;
+                effectiveCustomer = cartResponse.data.customer;
+            }
+
             // Check if customer is from Egypt
-            const isEgyptian = customer?.country === 'EG' ||
-                customer?.country_code === 'EG';
+            const isEgyptian = effectiveCustomer?.country === 'EG' ||
+                effectiveCustomer?.country_code === 'EG';
 
             if (!isEgyptian) {
                 // Redirect to normal Shopify checkout
@@ -21,7 +31,7 @@ const CheckoutButton = ({ cartItems, customer }) => {
 
             // Prepare cart data
             const checkoutData = {
-                cartItems: cartItems.map(item => ({
+                cartItems: effectiveCartItems.map(item => ({
                     variantId: item.variant.id,
                     quantity: item.quantity,
                     name: item.product.title,
@@ -29,29 +39,29 @@ const CheckoutButton = ({ cartItems, customer }) => {
                     description: item.product.description
                 })),
                 customer: {
-                    email: customer.email,
-                    first_name: customer.firstName,
-                    last_name: customer.lastName,
-                    phone: customer.phone
+                    email: effectiveCustomer.email,
+                    first_name: effectiveCustomer.firstName,
+                    last_name: effectiveCustomer.lastName,
+                    phone: effectiveCustomer.phone
                 },
                 billingData: {
-                    email: customer.email,
-                    first_name: customer.firstName,
-                    last_name: customer.lastName,
-                    phone_number: customer.phone,
-                    city: customer.city || 'Cairo',
-                    street: customer.address1,
-                    building: customer.address2 || 'NA',
+                    email: effectiveCustomer.email,
+                    first_name: effectiveCustomer.firstName,
+                    last_name: effectiveCustomer.lastName,
+                    phone_number: effectiveCustomer.phone,
+                    city: effectiveCustomer.city || 'Cairo',
+                    street: effectiveCustomer.address1,
+                    building: effectiveCustomer.address2 || 'NA',
                     apartment: 'NA',
                     floor: 'NA',
-                    postal_code: customer.zip || '00000',
-                    state: customer.province || 'Cairo'
+                    postal_code: effectiveCustomer.zip || '00000',
+                    state: effectiveCustomer.province || 'Cairo'
                 }
             };
 
-            // Call your backend
+            // Call backend using POST request to the current server
             const response = await axios.post(
-                'https://your-backend.com/api/checkout/egypt',
+                '/api/checkout/egypt',
                 checkoutData
             );
 
