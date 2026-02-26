@@ -25,6 +25,10 @@ function getBaseUrl(req) {
     return (process.env.PAYMOB_APP_URL || process.env.APP_URL || (req && (req.protocol + '://' + req.get('host')))) || '';
 }
 
+function getMissingEnv(keys) {
+    return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
+}
+
 // ==================== SHOPIFY FUNCTIONS ====================
 
 /**
@@ -194,7 +198,7 @@ async function paymobRegisterOrder(authToken, amount, merchantOrderId, items) {
 /**
  * Step 3: Get Payment Key from Paymob
  */
-async function paymobGetPaymentKey(authToken, orderId, amount, billingData) {
+async function paymobGetPaymentKey(authToken, orderId, amount, billingData, integrationId) {
     try {
         const response = await axios.post('https://accept.paymob.com/api/acceptance/payment_keys', {
             auth_token: authToken,
@@ -217,7 +221,7 @@ async function paymobGetPaymentKey(authToken, orderId, amount, billingData) {
                 state: billingData.state || 'Cairo'
             },
             currency: 'EGP',
-            integration_id: process.env.PAYMOB_INTEGRATION_ID
+            integration_id: integrationId
         });
 
         return response.data.token;
@@ -229,12 +233,66 @@ async function paymobGetPaymentKey(authToken, orderId, amount, billingData) {
 
 // ==================== API ENDPOINTS ====================
 
+function getPaymobMethodConfig(paymobMethod) {
+    const method = String(paymobMethod || '').toLowerCase();
+
+    // Fallback to default envs if method-specific ones aren't provided
+    const defaults = {
+        integrationId: process.env.PAYMOB_INTEGRATION_ID,
+        iframeId: process.env.PAYMOB_IFRAME_ID
+    };
+
+    if (method === 'wallet') {
+        return {
+            integrationId: process.env.PAYMOB_INTEGRATION_ID_WALLET || defaults.integrationId,
+            iframeId: process.env.PAYMOB_IFRAME_ID_WALLET || defaults.iframeId
+        };
+    }
+
+    if (method === 'kiosk') {
+        return {
+            integrationId: process.env.PAYMOB_INTEGRATION_ID_KIOSK || defaults.integrationId,
+            iframeId: process.env.PAYMOB_IFRAME_ID_KIOSK || defaults.iframeId
+        };
+    }
+
+    // default to card
+    return {
+        integrationId: process.env.PAYMOB_INTEGRATION_ID_CARD || defaults.integrationId,
+        iframeId: process.env.PAYMOB_IFRAME_ID_CARD || defaults.iframeId
+    };
+}
+
 /**
  * Main checkout endpoint - creates cart and redirects to Paymob
  */
 app.post('/api/checkout/egypt', async (req, res) => {
     try {
-        const { cartItems, customer, billingData } = req.body;
+        const { cartItems, customer, billingData, paymobMethod } = req.body;
+
+        const missingShopify = getMissingEnv(['SHOPIFY_STORE_DOMAIN', 'SHOPIFY_ADMIN_ACCESS_TOKEN']);
+        if (missingShopify.length) {
+            return res.status(500).json({
+                success: false,
+                error: `Missing Shopify env vars: ${missingShopify.join(', ')}`
+            });
+        }
+
+        const missingPaymobBase = getMissingEnv(['PAYMOB_API_KEY']);
+        if (missingPaymobBase.length) {
+            return res.status(500).json({
+                success: false,
+                error: `Missing Paymob env vars: ${missingPaymobBase.join(', ')}`
+            });
+        }
+
+        const paymobConfig = getPaymobMethodConfig(paymobMethod);
+        if (!paymobConfig.integrationId || !paymobConfig.iframeId) {
+            return res.status(500).json({
+                success: false,
+                error: 'Paymob configuration missing (integration_id / iframe_id)'
+            });
+        }
 
         // Step 1: Create draft order for tracking and pricing
         const draftOrder = await createDraftOrder(cartItems, customer);
@@ -263,11 +321,12 @@ app.post('/api/checkout/egypt', async (req, res) => {
             authToken,
             paymobOrder.id,
             totalAmount,
-            billingData
+            billingData,
+            paymobConfig.integrationId
         );
 
         // Step 6: Return Paymob iframe URL
-        const paymobIframeUrl = `https://accept.paymob.com/api/acceptance/iframes/${process.env.PAYMOB_IFRAME_ID}?payment_token=${paymentKey}`;
+        const paymobIframeUrl = `https://accept.paymob.com/api/acceptance/iframes/${paymobConfig.iframeId}?payment_token=${paymentKey}`;
 
         res.json({
             success: true,
@@ -688,7 +747,19 @@ function getCartPayloadCheckoutPageHtml(cart) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
-                var json = await res.json();
+                var text = await res.text();
+                var json;
+                try { json = JSON.parse(text); } catch (_) { json = null; }
+
+                if (!res.ok) {
+                    showError((json && (json.error || json.message)) || text || 'Checkout failed');
+                    return;
+                }
+
+                if (!json) {
+                    showError(text || 'Checkout failed');
+                    return;
+                }
                 if (json.success && json.paymentUrl) {
                     window.location.href = json.paymentUrl;
                 } else {
@@ -736,9 +807,34 @@ app.get('/api/checkout/page', (req, res) => {
         checkoutSessions.delete(token);
         return res.status(410).send('Checkout session expired');
     }
-    checkoutSessions.delete(token); // one-time use so page can be refreshed without re-POST
+
+    // one-time use
+    checkoutSessions.delete(token);
     res.type('html').send(getCartPayloadCheckoutPageHtml(cart));
 });
+
+// Debug endpoint: shows which env vars are missing (names only).
+app.get('/api/debug/env', (req, res) => {
+    const required = [
+        'SHOPIFY_STORE_DOMAIN',
+        'SHOPIFY_ADMIN_ACCESS_TOKEN',
+        'PAYMOB_API_KEY',
+        'PAYMOB_INTEGRATION_ID',
+        'PAYMOB_IFRAME_ID',
+        'PAYMOB_INTEGRATION_ID_CARD',
+        'PAYMOB_IFRAME_ID_CARD',
+        'PAYMOB_INTEGRATION_ID_WALLET',
+        'PAYMOB_IFRAME_ID_WALLET',
+        'PAYMOB_INTEGRATION_ID_KIOSK',
+        'PAYMOB_IFRAME_ID_KIOSK'
+    ];
+    const missing = getMissingEnv(required);
+    res.json({
+        ok: missing.length === 0,
+        missing
+    });
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
