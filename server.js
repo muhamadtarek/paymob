@@ -117,22 +117,38 @@ async function createShopifyCart(cartItems, customerEmail = null) {
  * Create a Draft Order (Alternative method for saving cart)
  */
 async function createDraftOrder(cartItems, customer) {
-    const lineItems = cartItems.map(item => ({
-        variant_id: item.variantId.split('/').pop(), // Extract numeric ID
-        quantity: item.quantity
-    }));
+    function buildVariantLineItems() {
+        return cartItems.map((item) => {
+            const raw = item?.variantId;
+            const numericVariantId = raw ? String(raw).split('/').pop() : null;
+            return {
+                variant_id: numericVariantId,
+                quantity: item.quantity
+            };
+        }).filter((li) => li.variant_id && li.variant_id !== 'undefined' && li.variant_id !== 'null');
+    }
 
-    const draftOrder = {
-        draft_order: {
-            line_items: lineItems,
-            customer: customer || {},
-            note: 'Paymob checkout pending',
-            tags: 'paymob-pending',
-            use_customer_default_address: false
-        }
-    };
+    function buildCustomLineItems() {
+        return cartItems.map((item) => ({
+            title: item?.name || 'Item',
+            quantity: item?.quantity || 1,
+            // Draft order expects price as string
+            price: String(Number(item?.price || 0))
+        }));
+    }
 
-    try {
+    async function postDraftOrder(lineItems, extra = {}) {
+        const draftOrder = {
+            draft_order: {
+                line_items: lineItems,
+                customer: customer || {},
+                note: 'Paymob checkout pending',
+                tags: 'paymob-pending',
+                use_customer_default_address: false,
+                ...extra
+            }
+        };
+
         const response = await axios.post(
             `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders.json`,
             draftOrder,
@@ -145,8 +161,36 @@ async function createDraftOrder(cartItems, customer) {
         );
 
         return response.data.draft_order;
+    }
+
+    try {
+        const variantLineItems = buildVariantLineItems();
+        if (variantLineItems.length) {
+            return await postDraftOrder(variantLineItems);
+        }
+        // No variant IDs available → use custom items
+        return await postDraftOrder(buildCustomLineItems(), { tags: 'paymob-pending,custom-items' });
     } catch (error) {
-        console.error('Error creating draft order:', error.response?.data || error.message);
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+
+        // If Shopify rejects variants as "no longer available", retry with custom line items
+        const baseErrors = data?.errors?.base;
+        const shouldRetryAsCustom =
+            status === 422 &&
+            Array.isArray(baseErrors) &&
+            baseErrors.some((m) => String(m).toLowerCase().includes('no longer available'));
+
+        if (shouldRetryAsCustom) {
+            try {
+                return await postDraftOrder(buildCustomLineItems(), { tags: 'paymob-pending,custom-items' });
+            } catch (retryErr) {
+                console.error('Error creating draft order (custom fallback):', retryErr.response?.data || retryErr.message);
+                throw retryErr;
+            }
+        }
+
+        console.error('Error creating draft order:', data || error.message);
         throw error;
     }
 }
