@@ -35,26 +35,25 @@ function getMissingEnv(keys) {
  * Create a Draft Order (Alternative method for saving cart)
  */
 async function createDraftOrder(cartItems, customer) {
-    function buildVariantLineItems() {
+    // Always use custom line items with explicit EGP prices.
+    // Shopify ignores the `price` field on variant line items and uses the
+    // variant's stored price in the store's base currency (USD) instead.
+    // By omitting variant_id and setting price explicitly, Shopify takes our
+    // EGP value as-is. We store the variant_id in `properties` for reference.
+    function buildEgpLineItems() {
         return cartItems.map((item) => {
             const raw = item?.variantId;
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
-            return {
-                variant_id: numericVariantId,
-                quantity: item.quantity,
-                // Override Shopify's stored price with the EGP price from the cart
-                price: String(Number(item?.price || 0))
+            const lineItem = {
+                title: item?.name || 'Item',
+                quantity: item?.quantity || 1,
+                price: String(Number(item?.price || 0)),
             };
-        }).filter((li) => li.variant_id && li.variant_id !== 'undefined' && li.variant_id !== 'null');
-    }
-
-    function buildCustomLineItems() {
-        return cartItems.map((item) => ({
-            title: item?.name || 'Item',
-            quantity: item?.quantity || 1,
-            // Draft order expects price as string
-            price: String(Number(item?.price || 0))
-        }));
+            if (numericVariantId && numericVariantId !== 'undefined' && numericVariantId !== 'null') {
+                lineItem.properties = [{ name: 'variant_id', value: numericVariantId }];
+            }
+            return lineItem;
+        });
     }
 
     // Build shipping address from customer object
@@ -113,33 +112,11 @@ async function createDraftOrder(cartItems, customer) {
     }
 
     try {
-        const variantLineItems = buildVariantLineItems();
-        if (variantLineItems.length) {
-            return await postDraftOrder(variantLineItems);
-        }
-        // No variant IDs available → use custom items
-        return await postDraftOrder(buildCustomLineItems(), { tags: 'paymob-pending,custom-items' });
+        // Always build EGP custom line items — variant line items would have
+        // their price silently overwritten by Shopify's stored USD price.
+        return await postDraftOrder(buildEgpLineItems(), { tags: 'paymob-pending,egp-prices' });
     } catch (error) {
-        const status = error?.response?.status;
-        const data = error?.response?.data;
-
-        // If Shopify rejects variants as "no longer available", retry with custom line items
-        const baseErrors = data?.errors?.base;
-        const shouldRetryAsCustom =
-            status === 422 &&
-            Array.isArray(baseErrors) &&
-            baseErrors.some((m) => String(m).toLowerCase().includes('no longer available'));
-
-        if (shouldRetryAsCustom) {
-            try {
-                return await postDraftOrder(buildCustomLineItems(), { tags: 'paymob-pending,custom-items' });
-            } catch (retryErr) {
-                console.error('Error creating draft order (custom fallback):', retryErr.response?.data || retryErr.message);
-                throw retryErr;
-            }
-        }
-
-        console.error('Error creating draft order:', data || error.message);
+        console.error('Error creating draft order:', error?.response?.data || error.message);
         throw error;
     }
 }
