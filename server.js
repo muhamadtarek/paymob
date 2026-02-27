@@ -55,11 +55,40 @@ async function createDraftOrder(cartItems, customer) {
         }));
     }
 
+    // Build shipping address from customer object
+    const shippingAddress = customer ? {
+        first_name: customer.firstName || customer.first_name || '',
+        last_name: customer.lastName || customer.last_name || '',
+        address1: customer.address1 || '',
+        address2: customer.address2 || '',
+        city: customer.city || '',
+        province: customer.province || customer.state || '',
+        zip: customer.zip || '',
+        country: customer.country || 'EG',
+        country_code: customer.country_code || 'EG',
+        phone: customer.phone || ''
+    } : undefined;
+
+    // Flat 100 EGP shipping fee
+    const shippingLine = {
+        title: 'Flat Rate Shipping',
+        price: '100.00',
+        custom: true
+    };
+
     async function postDraftOrder(lineItems, extra = {}) {
         const draftOrder = {
             draft_order: {
                 line_items: lineItems,
-                customer: customer || {},
+                customer: customer ? {
+                    first_name: customer.firstName || customer.first_name || '',
+                    last_name: customer.lastName || customer.last_name || '',
+                    email: customer.email || '',
+                    phone: customer.phone || ''
+                } : {},
+                shipping_address: shippingAddress,
+                shipping_line: shippingLine,
+                presentment_currency: 'EGP',
                 note: 'Paymob checkout pending',
                 tags: 'paymob-pending',
                 use_customer_default_address: false,
@@ -263,7 +292,7 @@ app.post('/api/checkout/egypt', async (req, res) => {
         // Step 1: Create draft order for tracking and pricing
         const draftOrder = await createDraftOrder(cartItems, customer);
 
-        // Step 2: Calculate total amount from draft order
+        // Step 2: Calculate total amount from draft order (includes 100 EGP shipping)
         const totalAmount = parseFloat(draftOrder.total_price);
 
         // If cash-on-delivery, we don't need an iframe URL.
@@ -702,7 +731,11 @@ function getCartPayloadCheckoutPageHtml(cart) {
                 '</li>';
             });
             html += '</ul>';
-            html += '<div class="total-row"><span>Total</span><span class="price">' + formatPrice(cart.total || 0) + '</span></div>';
+            var shipping = 100;
+            var grandTotal = (cart.total || 0) + shipping;
+            html += '<div class="total-row" style="font-weight:400;color:#555;"><span>Subtotal</span><span class="price">' + formatPrice(cart.total || 0) + '</span></div>';
+            html += '<div class="total-row" style="font-weight:400;color:#555;"><span>Shipping (flat rate)</span><span class="price">' + formatPrice(shipping) + '</span></div>';
+            html += '<div class="total-row"><span>Total</span><span class="price">' + formatPrice(grandTotal) + '</span></div>';
             summaryEl.innerHTML = html;
         }
 
