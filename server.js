@@ -267,12 +267,19 @@ app.post('/api/checkout/egypt', async (req, res) => {
         const totalAmount = parseFloat(draftOrder.total_price);
 
         // If cash-on-delivery, we don't need an iframe URL.
-        // We can still optionally register with Paymob using a COD integration, but no redirect is required.
+        // We can still optionally register with Paymob using a COD integration, but redirect goes to a normal page.
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
+            const codRedirectUrl =
+                process.env.COD_SUCCESS_URL ||
+                (process.env.FRONTEND_URL &&
+                    `${process.env.FRONTEND_URL.replace(/\/$/, '')}/cod-thank-you?draft=${draftOrder.id}`) ||
+                '/';
+
             return res.json({
                 success: true,
                 cod: true,
-                shopifyDraftOrderId: draftOrder.id
+                shopifyDraftOrderId: draftOrder.id,
+                redirectUrl: codRedirectUrl
             });
         }
 
@@ -756,9 +763,13 @@ function getCartPayloadCheckoutPageHtml(cart) {
                     // Card / wallet – redirect to Paymob iframe
                     window.location.href = json.paymentUrl;
                 } else if (json.success && json.cod) {
-                    // Cash on delivery – no iframe, just confirm
-                    payBtn.disabled = true;
-                    payBtn.textContent = 'Order placed (Cash on delivery)';
+                    // Cash on delivery – redirect to a normal thank-you / confirmation page
+                    if (json.redirectUrl) {
+                        window.location.href = json.redirectUrl;
+                    } else {
+                        payBtn.disabled = true;
+                        payBtn.textContent = 'Order placed (Cash on delivery)';
+                    }
                 } else {
                     showError(json.error || 'Checkout failed');
                 }
