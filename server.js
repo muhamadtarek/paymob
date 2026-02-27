@@ -41,7 +41,9 @@ async function createDraftOrder(cartItems, customer) {
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
             return {
                 variant_id: numericVariantId,
-                quantity: item.quantity
+                quantity: item.quantity,
+                // Override Shopify's stored price with the EGP price from the cart
+                price: String(Number(item?.price || 0))
             };
         }).filter((li) => li.variant_id && li.variant_id !== 'undefined' && li.variant_id !== 'null');
     }
@@ -292,8 +294,10 @@ app.post('/api/checkout/egypt', async (req, res) => {
         // Step 1: Create draft order for tracking and pricing
         const draftOrder = await createDraftOrder(cartItems, customer);
 
-        // Step 2: Calculate total amount from draft order (includes 100 EGP shipping)
-        const totalAmount = parseFloat(draftOrder.total_price);
+        // Step 2: Calculate total in EGP directly from cart items + flat shipping fee
+        // (draftOrder.total_price is in the store's base currency which may be USD)
+        const itemsTotal = cartItems.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0);
+        const totalAmount = itemsTotal + 100; // + 100 EGP flat shipping
 
         // If cash-on-delivery, we don't need an iframe URL.
         // Complete the draft order immediately so a real Shopify order is created, with payment pending.
