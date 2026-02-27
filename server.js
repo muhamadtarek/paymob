@@ -29,49 +29,6 @@ function getMissingEnv(keys) {
     return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
 }
 
-// ==================== CURRENCY CONVERSION ====================
-
-/**
- * Convert a USD price to EGP.
- * Priority:
- *   1. EGP_PER_USD env var  – set a fixed rate (e.g. EGP_PER_USD=50.5)
- *   2. Live rate from exchangerate-api (free, no key needed)
- *   3. Hard-coded fallback of 50 if the request fails
- */
-let _cachedRate = null;
-let _cachedRateAt = 0;
-const RATE_TTL_MS = 60 * 60 * 1000; // cache for 1 hour
-
-async function getUsdToEgpRate() {
-    // Fixed rate from env takes highest priority
-    if (process.env.EGP_PER_USD) {
-        const fixed = parseFloat(process.env.EGP_PER_USD);
-        if (!isNaN(fixed) && fixed > 0) return fixed;
-    }
-    // Return cached rate if still fresh
-    if (_cachedRate && Date.now() - _cachedRateAt < RATE_TTL_MS) {
-        return _cachedRate;
-    }
-    try {
-        const r = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 5000 });
-        const rate = r.data?.rates?.EGP;
-        if (rate && rate > 0) {
-            _cachedRate = rate;
-            _cachedRateAt = Date.now();
-            console.log(`💱 USD→EGP rate refreshed: ${rate}`);
-            return rate;
-        }
-    } catch (e) {
-        console.warn('Could not fetch live USD→EGP rate:', e.message);
-    }
-    // Fallback
-    return _cachedRate || 50;
-}
-
-function convertUsdToEgp(usdAmount, rate) {
-    return Math.round(Number(usdAmount) * rate * 100) / 100;
-}
-
 // ==================== SHOPIFY FUNCTIONS ====================
 
 /**
@@ -920,37 +877,17 @@ function getCartPayloadCheckoutPageHtml(cart) {
 </html>`;
 }
 
-app.post('/api/checkout/render', async (req, res) => {
-    try {
-        const { total, items } = req.body || {};
-
-        // Convert USD prices → EGP before storing in session.
-        // The Shopify storefront sends prices in the store's base currency (USD).
-        // Everything downstream (Paymob, draft order notes) must work in EGP.
-        const rate = await getUsdToEgpRate();
-        console.log(`💱 Converting cart prices USD→EGP at rate: ${rate}`);
-
-        const egpItems = (Array.isArray(items) ? items : []).map(item => ({
-            ...item,
-            price: convertUsdToEgp(item.price || 0, rate)
-        }));
-
-        const egpTotal = typeof total === 'number'
-            ? convertUsdToEgp(total, rate)
-            : egpItems.reduce((s, i) => s + (i.price * (i.quantity || 1)), 0);
-
-        const cart = { total: egpTotal, items: egpItems };
-        const token = createCheckoutToken();
-        checkoutSessions.set(token, { cart, createdAt: Date.now() });
-        const baseUrl = getBaseUrl(req);
-        const redirectUrl = baseUrl
-            ? (baseUrl.replace(/\/$/, '') + '/api/checkout/page?token=' + token)
-            : ('/api/checkout/page?token=' + token);
-        res.json({ success: true, redirectUrl });
-    } catch (err) {
-        console.error('Error in /api/checkout/render:', err.message);
-        res.status(500).json({ success: false, error: err.message });
-    }
+app.post('/api/checkout/render', (req, res) => {
+    const { total, items } = req.body || {};
+    const cart = {
+        total: typeof total === 'number' ? total : 0,
+        items: Array.isArray(items) ? items : []
+    };
+    const token = createCheckoutToken();
+    checkoutSessions.set(token, { cart, createdAt: Date.now() });
+    const baseUrl = getBaseUrl(req);
+    const redirectUrl = baseUrl ? (baseUrl.replace(/\/$/, '') + '/api/checkout/page?token=' + token) : ('/api/checkout/page?token=' + token);
+    res.json({ success: true, redirectUrl });
 });
 
 app.get('/api/checkout/page', (req, res) => {
