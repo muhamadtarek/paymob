@@ -608,7 +608,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
                     <div class="paymob-options">
                         <label><input type="radio" name="paymob_method" value="card" checked /> Card</label>
                         <label><input type="radio" name="paymob_method" value="wallet" /> Mobile wallet</label>
-                        <label><input type="radio" name="paymob_method" value="cash" /> Cash</label>
                     </div>
                     <p class="note">Payment is securely processed by Paymob.</p>
                 </div>
