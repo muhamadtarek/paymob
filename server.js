@@ -204,6 +204,14 @@ function getPaymobMethodConfig(paymobMethod) {
         iframeId: process.env.PAYMOB_IFRAME_ID
     };
 
+    if (method === 'cod') {
+        // Cash on delivery – only needs an integration id, no iframe
+        return {
+            integrationId: process.env.PAYMOB_INTEGRATION_ID_COD || defaults.integrationId,
+            iframeId: null
+        };
+    }
+
     if (method === 'wallet') {
         return {
             integrationId: process.env.PAYMOB_INTEGRATION_ID_WALLET || defaults.integrationId,
@@ -245,10 +253,10 @@ app.post('/api/checkout/egypt', async (req, res) => {
         }
 
         const paymobConfig = getPaymobMethodConfig(paymobMethod);
-        if (!paymobConfig.integrationId || !paymobConfig.iframeId) {
+        if (!paymobConfig.integrationId) {
             return res.status(500).json({
                 success: false,
-                error: 'Paymob configuration missing (integration_id / iframe_id)'
+                error: 'Paymob configuration missing (integration_id)'
             });
         }
 
@@ -257,6 +265,16 @@ app.post('/api/checkout/egypt', async (req, res) => {
 
         // Step 2: Calculate total amount from draft order
         const totalAmount = parseFloat(draftOrder.total_price);
+
+        // If cash-on-delivery, we don't need an iframe URL.
+        // We can still optionally register with Paymob using a COD integration, but no redirect is required.
+        if (String(paymobMethod || '').toLowerCase() === 'cod') {
+            return res.json({
+                success: true,
+                cod: true,
+                shopifyDraftOrderId: draftOrder.id
+            });
+        }
 
         // Step 3: Authenticate with Paymob
         const authToken = await paymobAuthenticate();
@@ -284,7 +302,9 @@ app.post('/api/checkout/egypt', async (req, res) => {
         );
 
         // Step 6: Return Paymob iframe URL
-        const paymobIframeUrl = `https://accept.paymob.com/api/acceptance/iframes/${paymobConfig.iframeId}?payment_token=${paymentKey}`;
+        const paymobIframeUrl = paymobConfig.iframeId
+            ? `https://accept.paymob.com/api/acceptance/iframes/${paymobConfig.iframeId}?payment_token=${paymentKey}`
+            : null;
 
         res.json({
             success: true,
@@ -608,6 +628,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
                     <div class="paymob-options">
                         <label><input type="radio" name="paymob_method" value="card" checked /> Card</label>
                         <label><input type="radio" name="paymob_method" value="wallet" /> Mobile wallet</label>
+                        <label><input type="radio" name="paymob_method" value="cod" /> Cash on delivery</label>
                     </div>
                     <p class="note">Payment is securely processed by Paymob.</p>
                 </div>
@@ -732,7 +753,12 @@ function getCartPayloadCheckoutPageHtml(cart) {
                     return;
                 }
                 if (json.success && json.paymentUrl) {
+                    // Card / wallet – redirect to Paymob iframe
                     window.location.href = json.paymentUrl;
+                } else if (json.success && json.cod) {
+                    // Cash on delivery – no iframe, just confirm
+                    payBtn.disabled = true;
+                    payBtn.textContent = 'Order placed (Cash on delivery)';
                 } else {
                     showError(json.error || 'Checkout failed');
                 }
