@@ -34,7 +34,7 @@ function getMissingEnv(keys) {
 /**
  * Create a Draft Order (Alternative method for saving cart)
  */
-async function createDraftOrder(cartItems, customer) {
+async function createDraftOrder(cartItems, customer, egpTotal) {
     // Always use custom line items with explicit EGP prices.
     // Shopify ignores the `price` field on variant line items and uses the
     // variant's stored price in the store's base currency (USD) instead.
@@ -89,9 +89,18 @@ async function createDraftOrder(cartItems, customer) {
                 } : {},
                 shipping_address: shippingAddress,
                 shipping_line: shippingLine,
+                // currency + presentment_currency both set to EGP so Shopify
+                // records the order in EGP rather than converting to USD.
+                currency: 'EGP',
                 presentment_currency: 'EGP',
                 note: 'Paymob checkout pending',
                 tags: 'paymob-pending',
+                // Store the canonical EGP total in note_attributes so it
+                // survives as-is even if Shopify re-prices in USD internally.
+                note_attributes: [
+                    { name: 'egp_total', value: String(egpTotal || 0) },
+                    { name: 'currency', value: 'EGP' }
+                ],
                 use_customer_default_address: false,
                 ...extra
             }
@@ -289,13 +298,27 @@ app.post('/api/checkout/egypt', async (req, res) => {
             });
         }
 
-        // Step 1: Create draft order for tracking and pricing
-        const draftOrder = await createDraftOrder(cartItems, customer);
-
-        // Step 2: Calculate total in EGP directly from cart items + flat shipping fee
-        // (draftOrder.total_price is in the store's base currency which may be USD)
+        // Step 1: Calculate EGP total from cart items BEFORE creating the draft order
+        // so we can store it on the order itself — Shopify will always save prices
+        // in the store's base currency (USD) regardless of what we send.
         const itemsTotal = cartItems.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0);
         const totalAmount = itemsTotal + 100; // + 100 EGP flat shipping
+
+        // Step 2: Create draft order, embedding EGP total in note_attributes.
+        // IMPORTANT: For Shopify to honour currency:'EGP' you must enable EGP
+        // in your store's Markets / Currencies settings. If EGP is not enabled,
+        // Shopify will silently ignore the currency field and store USD instead.
+        // The egp_total note_attribute is the canonical source of truth regardless.
+        const draftOrder = await createDraftOrder(cartItems, customer, totalAmount);
+
+        // Warn if Shopify ignored EGP (happens when EGP is not an enabled currency)
+        if (draftOrder.currency && draftOrder.currency !== 'EGP') {
+            console.warn(
+                `⚠️  Shopify stored the draft order in ${draftOrder.currency} instead of EGP. ` +
+                `Enable EGP in Shopify Admin → Settings → Markets to fix this. ` +
+                `Paymob will still charge the correct EGP amount from note_attributes.`
+            );
+        }
 
         // If cash-on-delivery, we don't need an iframe URL.
         // Complete the draft order immediately so a real Shopify order is created, with payment pending.
