@@ -267,7 +267,7 @@ app.post('/api/checkout/egypt', async (req, res) => {
         const totalAmount = parseFloat(draftOrder.total_price);
 
         // If cash-on-delivery, we don't need an iframe URL.
-        // We can still optionally register with Paymob using a COD integration, but redirect goes to a normal page.
+        // Complete the draft order immediately so a real Shopify order is created, with payment pending.
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
             const codRedirectUrl =
                 process.env.COD_SUCCESS_URL ||
@@ -275,12 +275,38 @@ app.post('/api/checkout/egypt', async (req, res) => {
                     `${process.env.FRONTEND_URL.replace(/\/$/, '')}/cod-thank-you?draft=${draftOrder.id}`) ||
                 '/';
 
-            return res.json({
-                success: true,
-                cod: true,
-                shopifyDraftOrderId: draftOrder.id,
-                redirectUrl: codRedirectUrl
-            });
+            // Complete draft order as COD (payment still pending on Shopify side)
+            try {
+                const completeRes = await axios.put(
+                    `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
+                    {
+                        payment_pending: true
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN
+                        }
+                    }
+                );
+
+                const shopifyOrderId = completeRes.data?.draft_order?.order_id;
+
+                return res.json({
+                    success: true,
+                    cod: true,
+                    shopifyDraftOrderId: draftOrder.id,
+                    shopifyOrderId,
+                    redirectUrl: codRedirectUrl
+                });
+            } catch (e) {
+                console.error('Error completing COD draft order:', e.response?.data || e.message);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to complete COD order in Shopify'
+                });
+            }
+
         }
 
         // Step 3: Authenticate with Paymob
