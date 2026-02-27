@@ -144,21 +144,42 @@ async function paymobAuthenticate() {
  */
 async function paymobRegisterOrder(authToken, amount, merchantOrderId, items) {
     try {
+        // amount_cents on each item must be the UNIT price in cents (not total).
+        // The grand total (amount_cents on the order) must equal
+        // sum(item.amount_cents * item.quantity) across all items including shipping.
+        // A mismatch causes Paymob to reject or silently convert the currency.
+        const paymobItems = items.map(item => ({
+            name: item.name,
+            amount_cents: Math.round(Number(item.price) * 100), // unit price in cents
+            description: item.description || item.name,
+            quantity: item.quantity
+        }));
+
+        // Add shipping as an explicit line item so the sum always matches
+        paymobItems.push({
+            name: 'Flat Rate Shipping',
+            amount_cents: 10000, // 100.00 EGP in cents
+            description: 'Shipping',
+            quantity: 1
+        });
+
+        // Recalculate grand total from items to guarantee it matches exactly
+        const totalCents = paymobItems.reduce(
+            (sum, item) => sum + item.amount_cents * item.quantity, 0
+        );
+
         const response = await axios.post('https://accept.paymob.com/api/ecommerce/orders', {
             auth_token: authToken,
             delivery_needed: false,
-            amount_cents: Math.round(amount * 100), // Convert to cents
+            amount_cents: totalCents,
             currency: 'EGP',
             merchant_order_id: merchantOrderId,
-            items: items.map(item => ({
-                name: item.name,
-                amount_cents: Math.round(item.price * 100),
-                description: item.description || item.name,
-                quantity: item.quantity
-            }))
+            items: paymobItems
         });
 
-        return response.data;
+        // Return both the order data and the exact totalCents so the payment key
+        // call uses the same figure — preventing any currency mismatch.
+        return { ...response.data, _totalCents: totalCents };
     } catch (error) {
         console.error('Paymob order registration error:', error.response?.data || error.message);
         throw error;
@@ -335,11 +356,16 @@ app.post('/api/checkout/egypt', async (req, res) => {
             }))
         );
 
+        // Use the exact cent value calculated inside paymobRegisterOrder so that
+        // the payment key amount_cents always matches the order amount_cents.
+        // A mismatch is what causes Paymob to treat the amount as USD and convert.
+        const exactTotalCents = paymobOrder._totalCents;
+
         // Step 5: Get Paymob payment key
         const paymentKey = await paymobGetPaymentKey(
             authToken,
             paymobOrder.id,
-            totalAmount,
+            exactTotalCents / 100, // convert back to unit for the helper (it multiplies by 100 internally)
             billingData,
             paymobConfig.integrationId
         );
