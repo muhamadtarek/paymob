@@ -29,28 +29,66 @@ function getMissingEnv(keys) {
     return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
 }
 
+// ==================== CURRENCY HELPERS ====================
+
+// In-process cache so we don't hammer the rate API on every checkout.
+let _rateCache = { rate: null, fetchedAt: 0 };
+const RATE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Returns the live USD-per-EGP rate (i.e. 1 EGP = X USD).
+ * Source: open.er-api.com — free, no API key required.
+ * Falls back to a hardcoded conservative rate if the request fails.
+ */
+async function fetchUsdPerEgp() {
+    const now = Date.now();
+    if (_rateCache.rate && (now - _rateCache.fetchedAt) < RATE_CACHE_TTL_MS) {
+        return _rateCache.rate;
+    }
+    try {
+        const resp = await axios.get('https://open.er-api.com/v6/latest/EGP', { timeout: 5000 });
+        const rate = resp.data?.rates?.USD;
+        if (!rate || typeof rate !== 'number') throw new Error('Invalid rate response');
+        _rateCache = { rate, fetchedAt: now };
+        console.log(`💱 Live EGP→USD rate: 1 EGP = ${rate} USD`);
+        return rate;
+    } catch (err) {
+        console.error('Exchange rate fetch failed, using fallback:', err.message);
+        // Fallback: ~50 EGP per USD as of early 2025
+        return 0.02;
+    }
+}
+
+/**
+ * Convert an EGP amount to USD, rounded to 2 decimal places.
+ */
+function egpToUsd(egpAmount, usdPerEgp) {
+    return Math.round(egpAmount * usdPerEgp * 100) / 100;
+}
+
 // ==================== SHOPIFY FUNCTIONS ====================
 
 /**
  * Create a Draft Order (Alternative method for saving cart)
  */
-async function createDraftOrder(cartItems, customer, egpTotal) {
-    // Custom line items with explicit prices; variant_id stored in properties for reference.
-    function buildEgpLineItems() {
+async function createDraftOrder(cartItems, customer, egpTotal, usdPerEgp) {
+    // Line items sent to Shopify with USD prices (store base currency).
+    // Original EGP amounts are preserved in properties for the admin.
+    function buildLineItems() {
         return cartItems.map((item) => {
             const raw = item?.variantId;
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
-            const unitPrice = Number(item?.price || 0);
+            const egpUnit = Number(item?.price || 0);
             const qty = item?.quantity || 1;
-            // Price is set to 0 on the Shopify order; the real EGP amounts
-            // are stored as line item properties for the team to see in the admin.
+            const usdUnit = egpToUsd(egpUnit, usdPerEgp);
             const lineItem = {
                 title: item?.name || 'Item',
                 quantity: qty,
-                price: '0.00',
+                price: String(usdUnit),
                 properties: [
-                    { name: 'EGP Unit Price', value: String(unitPrice) },
-                    { name: 'EGP Line Total', value: String(Math.round(unitPrice * qty * 100) / 100) },
+                    { name: 'EGP Unit Price', value: String(egpUnit) },
+                    { name: 'EGP Line Total', value: String(Math.round(egpUnit * qty * 100) / 100) },
+                    { name: 'USD Unit Price', value: String(usdUnit) },
                 ],
             };
             if (numericVariantId && numericVariantId !== 'undefined' && numericVariantId !== 'null') {
@@ -74,10 +112,10 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
         phone: customer.phone || ''
     } : undefined;
 
-    // Flat 100 EGP shipping fee
+    // Flat 100 EGP shipping fee — converted to USD for Shopify.
     const shippingLine = {
-        title: 'Flat Rate Shipping',
-        price: '100.00',
+        title: 'Flat Rate Shipping (100 EGP)',
+        price: String(egpToUsd(100, usdPerEgp)),
         custom: true
     };
 
@@ -93,13 +131,15 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
                 } : {},
                 shipping_address: shippingAddress,
                 shipping_line: shippingLine,
-                currency: 'EGP',
-                presentment_currency: 'EGP',
+                // Shopify store base currency is USD — prices sent as USD.
+                // EGP originals are preserved in note_attributes and line item properties.
                 note: 'Paymob checkout pending',
                 tags: 'paymob-pending',
                 note_attributes: [
-                    { name: 'egp_total', value: String(egpTotal || 0) },
-                    { name: 'currency', value: 'EGP' }
+                    { name: 'EGP Grand Total', value: String(egpTotal || 0) },
+                    { name: 'USD Grand Total', value: String(egpToUsd(egpTotal || 0, usdPerEgp)) },
+                    { name: 'EGP/USD Rate', value: String(usdPerEgp) },
+                    { name: 'Payment Currency', value: 'EGP (charged via Paymob)' }
                 ],
                 use_customer_default_address: false,
                 ...extra
@@ -121,7 +161,7 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
     }
 
     try {
-        return await postDraftOrder(buildEgpLineItems(), { tags: 'paymob-pending,egp-prices' });
+        return await postDraftOrder(buildLineItems(), { tags: 'paymob-pending,egp-prices' });
     } catch (error) {
         console.error('Error creating draft order:', error?.response?.data || error.message);
         throw error;
@@ -294,14 +334,17 @@ app.post('/api/checkout/egypt', async (req, res) => {
             });
         }
 
-        // Step 1: Calculate total from cart items (prices are already in EGP).
+        // Step 1: Fetch live EGP→USD exchange rate.
+        const usdPerEgp = await fetchUsdPerEgp();
+
+        // Step 2: Calculate EGP totals (Paymob always charges in EGP).
         const itemsTotal = cartItems.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0);
         const totalAmount = itemsTotal + 100; // + 100 EGP flat shipping
 
-        // Step 2: Create draft order with EGP total stored in note_attributes.
-        const draftOrder = await createDraftOrder(cartItems, customer, totalAmount);
+        // Step 3: Create Shopify draft order with USD prices + EGP metadata.
+        const draftOrder = await createDraftOrder(cartItems, customer, totalAmount, usdPerEgp);
 
-        // If cash-on-delivery, we don't need an iframe URL.
+        // Step 4: If cash-on-delivery, complete the draft order immediately.
         // Complete the draft order immediately so a real Shopify order is created, with payment pending.
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
             const codRedirectUrl =
@@ -344,10 +387,10 @@ app.post('/api/checkout/egypt', async (req, res) => {
 
         }
 
-        // Step 3: Authenticate with Paymob
+        // Step 5: Authenticate with Paymob
         const authToken = await paymobAuthenticate();
 
-        // Step 4: Register order with Paymob
+        // Step 6: Register order with Paymob (amounts in EGP — Paymob charges EGP).
         const paymobOrder = await paymobRegisterOrder(
             authToken,
             totalAmount,
@@ -360,11 +403,11 @@ app.post('/api/checkout/egypt', async (req, res) => {
             }))
         );
 
-        // Use the exact cent value from paymobRegisterOrder so payment key amount_cents
+        // Step 7: Use the exact cent value from paymobRegisterOrder so payment key amount_cents
         // always matches the order amount_cents.
         const exactTotalCents = paymobOrder._totalCents;
 
-        // Step 5: Get Paymob payment key
+        // Step 8: Get Paymob payment key
         const paymentKey = await paymobGetPaymentKey(
             authToken,
             paymobOrder.id,
@@ -373,7 +416,7 @@ app.post('/api/checkout/egypt', async (req, res) => {
             paymobConfig.integrationId
         );
 
-        // Step 6: Return Paymob iframe URL
+        // Step 9: Return Paymob iframe URL
         const paymobIframeUrl = paymobConfig.iframeId
             ? `https://accept.paymob.com/api/acceptance/iframes/${paymobConfig.iframeId}?payment_token=${paymentKey}`
             : null;
@@ -383,7 +426,8 @@ app.post('/api/checkout/egypt', async (req, res) => {
             paymentUrl: paymobIframeUrl,
             shopifyDraftOrderId: draftOrder.id,
             paymobOrderId: paymobOrder.id,
-            paymentToken: paymentKey
+            paymentToken: paymentKey,
+            usdRate: usdPerEgp   // 1 EGP = X USD used for this order
         });
 
     } catch (error) {
