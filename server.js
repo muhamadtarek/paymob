@@ -40,13 +40,21 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
         return cartItems.map((item) => {
             const raw = item?.variantId;
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
+            const unitPrice = Number(item?.price || 0);
+            const qty = item?.quantity || 1;
+            // Price is set to 0 on the Shopify order; the real EGP amounts
+            // are stored as line item properties for the team to see in the admin.
             const lineItem = {
                 title: item?.name || 'Item',
-                quantity: item?.quantity || 1,
-                price: String(Number(item?.price || 0)),
+                quantity: qty,
+                price: '0.00',
+                properties: [
+                    { name: 'EGP Unit Price', value: String(unitPrice) },
+                    { name: 'EGP Line Total', value: String(Math.round(unitPrice * qty * 100) / 100) },
+                ],
             };
             if (numericVariantId && numericVariantId !== 'undefined' && numericVariantId !== 'null') {
-                lineItem.properties = [{ name: 'variant_id', value: numericVariantId }];
+                lineItem.properties.push({ name: 'variant_id', value: numericVariantId });
             }
             return lineItem;
         });
@@ -797,15 +805,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
     .badge-amex { background: #2671b2; color: white; border-color: #2671b2; font-size: 9px; }
     .badge-more { background: var(--bg); }
 
-    /* Card fields panel */
-    .card-fields {
-      padding: 0 14px 14px;
-      background: var(--bg);
-      border-top: 1px solid var(--border);
-      display: none;
-    }
-    .card-fields.active { display: block; padding-top: 12px; }
-
     /* COD option */
     .cod-option {
       border: 1px solid var(--border);
@@ -1152,40 +1151,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
             <span class="badge badge-more">+5</span>
           </div>
         </div>
-        <div class="card-fields active" id="card-fields">
-          <div class="field">
-            <div class="input-wrap">
-              <input type="text" placeholder="Card number" inputmode="numeric" autocomplete="cc-number" />
-              <span class="input-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
-                </svg>
-              </span>
-            </div>
-          </div>
-          <div class="field-row">
-            <div class="field">
-              <input type="text" placeholder="Expiration date (MM / YY)" autocomplete="cc-exp" />
-            </div>
-            <div class="field">
-              <div class="input-wrap">
-                <input type="text" placeholder="Security code" autocomplete="cc-csc" />
-                <span class="input-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
-                  </svg>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="field">
-            <input type="text" placeholder="Name on card" autocomplete="cc-name" />
-          </div>
-          <label class="checkbox-field" style="margin-top:4px;margin-bottom:0;">
-            <input type="checkbox" checked />
-            Use shipping address as billing address
-          </label>
-        </div>
       </div>
 
       <!-- Wallet option -->
@@ -1289,23 +1254,13 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
   /* ── Payment method toggle ── */
   window.onPaymentChange = function (input) {
-    var cardFields = document.getElementById('card-fields');
     var opts = ['opt-card', 'opt-wallet', 'opt-cod'];
     opts.forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.classList.remove('selected');
     });
-
-    if (input.value === 'card') {
-      document.getElementById('opt-card').classList.add('selected');
-      cardFields.classList.add('active');
-    } else if (input.value === 'wallet') {
-      document.getElementById('opt-wallet').classList.add('selected');
-      cardFields.classList.remove('active');
-    } else if (input.value === 'cod') {
-      document.getElementById('opt-cod').classList.add('selected');
-      cardFields.classList.remove('active');
-    }
+    var target = document.getElementById('opt-' + input.value);
+    if (target) target.classList.add('selected');
   };
 
   /* ── Form submit ── */
