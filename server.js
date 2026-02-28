@@ -1,3 +1,33 @@
+const express = require('express');
+const axios = require('axios');
+require('dotenv').config();
+
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Enable CORS
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    next();
+});
+
+// Short-lived checkout sessions: token -> { cart, createdAt }
+const checkoutSessions = new Map();
+const SESSION_TTL_MS = 15 * 60 * 1000; // 15 min
+
+function createCheckoutToken() {
+    return require('crypto').randomBytes(24).toString('hex');
+}
+
+function getBaseUrl(req) {
+    return (process.env.PAYMOB_APP_URL || process.env.APP_URL || (req && (req.protocol + '://' + req.get('host')))) || '';
+}
+
+function getMissingEnv(keys) {
+    return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
+}
 
 // ==================== SHOPIFY FUNCTIONS ====================
 
@@ -5,31 +35,18 @@
  * Create a Draft Order (Alternative method for saving cart)
  */
 async function createDraftOrder(cartItems, customer, egpTotal) {
-    // Always use custom line items with explicit EGP prices.
-    // Shopify ignores the `price` field on variant line items and uses the
-    // variant's stored price in the store's base currency (USD) instead.
-    // By omitting variant_id and setting price explicitly, Shopify takes our
-    // EGP value as-is. We store the variant_id in `properties` for reference.
+    // Custom line items with explicit prices; variant_id stored in properties for reference.
     function buildEgpLineItems() {
         return cartItems.map((item) => {
             const raw = item?.variantId;
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
-            // We set price to "0" intentionally.
-            // Shopify's base currency is USD — any price we send gets stored as USD
-            // and displayed as "$X USD" in the admin, which is wrong.
-            // The real EGP prices are stored in note_attributes (egp_items + egp_total)
-            // so your team can see the correct amounts on the order page.
             const lineItem = {
                 title: item?.name || 'Item',
                 quantity: item?.quantity || 1,
-                price: '0.00',
-                properties: [
-                    { name: 'EGP Price', value: String(Number(item?.price || 0)) },
-                    { name: 'EGP Line Total', value: String(Math.round(Number(item?.price || 0) * (item?.quantity || 1) * 100) / 100) },
-                ]
+                price: String(Number(item?.price || 0)),
             };
             if (numericVariantId && numericVariantId !== 'undefined' && numericVariantId !== 'null') {
-                lineItem.properties.push({ name: 'variant_id', value: numericVariantId });
+                lineItem.properties = [{ name: 'variant_id', value: numericVariantId }];
             }
             return lineItem;
         });
@@ -68,23 +85,13 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
                 } : {},
                 shipping_address: shippingAddress,
                 shipping_line: shippingLine,
-                // currency + presentment_currency both set to EGP so Shopify
-                // records the order in EGP rather than converting to USD.
                 currency: 'EGP',
                 presentment_currency: 'EGP',
                 note: 'Paymob checkout pending',
                 tags: 'paymob-pending',
-                // Store the canonical EGP total in note_attributes so it
-                // survives as-is even if Shopify re-prices in USD internally.
                 note_attributes: [
-                    { name: 'Currency', value: 'EGP' },
-                    { name: 'EGP Total (excl. shipping)', value: String(Math.round((egpTotal - 100) * 100) / 100 || 0) },
-                    { name: 'EGP Shipping', value: '100.00' },
-                    { name: 'EGP Grand Total', value: String(egpTotal || 0) },
-                    ...cartItems.map((item, i) => ({
-                        name: `Item ${i + 1}: ${item?.name || 'Item'}`,
-                        value: `Qty ${item?.quantity || 1} x EGP ${Number(item?.price || 0)} = EGP ${Math.round(Number(item?.price || 0) * (item?.quantity || 1) * 100) / 100}`
-                    }))
+                    { name: 'egp_total', value: String(egpTotal || 0) },
+                    { name: 'currency', value: 'EGP' }
                 ],
                 use_customer_default_address: false,
                 ...extra
@@ -106,8 +113,6 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
     }
 
     try {
-        // Always build EGP custom line items — variant line items would have
-        // their price silently overwritten by Shopify's stored USD price.
         return await postDraftOrder(buildEgpLineItems(), { tags: 'paymob-pending,egp-prices' });
     } catch (error) {
         console.error('Error creating draft order:', error?.response?.data || error.message);
@@ -138,10 +143,8 @@ async function paymobAuthenticate() {
  */
 async function paymobRegisterOrder(authToken, amount, merchantOrderId, items) {
     try {
-        // amount_cents on each item must be the UNIT price in cents (not total).
-        // The grand total (amount_cents on the order) must equal
+        // amount_cents per item is the UNIT price in cents; grand total must equal
         // sum(item.amount_cents * item.quantity) across all items including shipping.
-        // A mismatch causes Paymob to reject or silently convert the currency.
         const paymobItems = items.map(item => ({
             name: item.name,
             amount_cents: Math.round(Number(item.price) * 100), // unit price in cents
@@ -172,7 +175,7 @@ async function paymobRegisterOrder(authToken, amount, merchantOrderId, items) {
         });
 
         // Return both the order data and the exact totalCents so the payment key
-        // call uses the same figure — preventing any currency mismatch.
+        // call uses the same figure.
         return { ...response.data, _totalCents: totalCents };
     } catch (error) {
         console.error('Paymob order registration error:', error.response?.data || error.message);
@@ -283,27 +286,12 @@ app.post('/api/checkout/egypt', async (req, res) => {
             });
         }
 
-        // Step 1: Calculate EGP total from cart items BEFORE creating the draft order
-        // so we can store it on the order itself — Shopify will always save prices
-        // in the store's base currency (USD) regardless of what we send.
+        // Step 1: Calculate total from cart items (prices are already in EGP).
         const itemsTotal = cartItems.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0);
         const totalAmount = itemsTotal + 100; // + 100 EGP flat shipping
 
-        // Step 2: Create draft order, embedding EGP total in note_attributes.
-        // IMPORTANT: For Shopify to honour currency:'EGP' you must enable EGP
-        // in your store's Markets / Currencies settings. If EGP is not enabled,
-        // Shopify will silently ignore the currency field and store USD instead.
-        // The egp_total note_attribute is the canonical source of truth regardless.
+        // Step 2: Create draft order with EGP total stored in note_attributes.
         const draftOrder = await createDraftOrder(cartItems, customer, totalAmount);
-
-        // Warn if Shopify ignored EGP (happens when EGP is not an enabled currency)
-        if (draftOrder.currency && draftOrder.currency !== 'EGP') {
-            console.warn(
-                `⚠️  Shopify stored the draft order in ${draftOrder.currency} instead of EGP. ` +
-                `Enable EGP in Shopify Admin → Settings → Markets to fix this. ` +
-                `Paymob will still charge the correct EGP amount from note_attributes.`
-            );
-        }
 
         // If cash-on-delivery, we don't need an iframe URL.
         // Complete the draft order immediately so a real Shopify order is created, with payment pending.
@@ -364,9 +352,8 @@ app.post('/api/checkout/egypt', async (req, res) => {
             }))
         );
 
-        // Use the exact cent value calculated inside paymobRegisterOrder so that
-        // the payment key amount_cents always matches the order amount_cents.
-        // A mismatch is what causes Paymob to treat the amount as USD and convert.
+        // Use the exact cent value from paymobRegisterOrder so payment key amount_cents
+        // always matches the order amount_cents.
         const exactTotalCents = paymobOrder._totalCents;
 
         // Step 5: Get Paymob payment key
@@ -493,9 +480,9 @@ app.get('/api/checkout/success', (req, res) => {
 });
 
 /**
- * Render full checkout page from cart payload
+ * Render full checkout page from cart payload — Nazeerah-style design
  * POST /api/checkout/render
- * Expects body: { total, items: [{ id, name, category, price, quantity }] }
+ * Expects body: { total, items: [{ id, name, category, price, quantity, image }] }
  */
 function getCartPayloadCheckoutPageHtml(cart) {
     const safeCartJson = JSON.stringify(cart || { total: 0, items: [] }).replace(/</g, '\\u003c');
@@ -1431,20 +1418,12 @@ function getCartPayloadCheckoutPageHtml(cart) {
 </html>`;
 }
 
-
 app.post('/api/checkout/render', (req, res) => {
-    const { total, items } = req.body || {};
-    // Prices from the cart are already in EGP — no conversion needed.
-    const cart = {
-        total: typeof total === 'number' ? total : 0,
-        items: Array.isArray(items) ? items : []
-    };
+    const cart = req.body || {};
     const token = createCheckoutToken();
     checkoutSessions.set(token, { cart, createdAt: Date.now() });
     const baseUrl = getBaseUrl(req);
-    const redirectUrl = baseUrl
-        ? (baseUrl.replace(/\/$/, '') + '/api/checkout/page?token=' + token)
-        : ('/api/checkout/page?token=' + token);
+    const redirectUrl = baseUrl ? (baseUrl.replace(/\/$/, '') + '/api/checkout/page?token=' + token) : ('/api/checkout/page?token=' + token);
     res.json({ success: true, redirectUrl });
 });
 
@@ -1493,5 +1472,5 @@ app.get('/api/debug/env', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`\uD83D\uDE80 Server running on port ${PORT}`);
 });
