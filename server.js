@@ -29,49 +29,6 @@ function getMissingEnv(keys) {
     return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
 }
 
-// ==================== CURRENCY CONVERSION ====================
-
-/**
- * Convert a USD price to EGP.
- * Priority:
- *   1. EGP_PER_USD env var  – set a fixed rate (e.g. EGP_PER_USD=50.5)
- *   2. Live rate from exchangerate-api (free, no key needed)
- *   3. Hard-coded fallback of 50 if the request fails
- */
-let _cachedRate = null;
-let _cachedRateAt = 0;
-const RATE_TTL_MS = 60 * 60 * 1000; // cache for 1 hour
-
-async function getUsdToEgpRate() {
-    // Fixed rate from env takes highest priority
-    if (process.env.EGP_PER_USD) {
-        const fixed = parseFloat(process.env.EGP_PER_USD);
-        if (!isNaN(fixed) && fixed > 0) return fixed;
-    }
-    // Return cached rate if still fresh
-    if (_cachedRate && Date.now() - _cachedRateAt < RATE_TTL_MS) {
-        return _cachedRate;
-    }
-    try {
-        const r = await axios.get('https://open.er-api.com/v6/latest/USD', { timeout: 5000 });
-        const rate = r.data?.rates?.EGP;
-        if (rate && rate > 0) {
-            _cachedRate = rate;
-            _cachedRateAt = Date.now();
-            console.log(`💱 USD→EGP rate refreshed: ${rate}`);
-            return rate;
-        }
-    } catch (e) {
-        console.warn('Could not fetch live USD→EGP rate:', e.message);
-    }
-    // Fallback
-    return _cachedRate || 50;
-}
-
-function convertUsdToEgp(usdAmount, rate) {
-    return Math.round(Number(usdAmount) * rate * 100) / 100;
-}
-
 // ==================== SHOPIFY FUNCTIONS ====================
 
 /**
@@ -87,22 +44,13 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
         return cartItems.map((item) => {
             const raw = item?.variantId;
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
-            // We set price to "0" intentionally.
-            // Shopify's base currency is USD — any price we send gets stored as USD
-            // and displayed as "$X USD" in the admin, which is wrong.
-            // The real EGP prices are stored in note_attributes (egp_items + egp_total)
-            // so your team can see the correct amounts on the order page.
             const lineItem = {
                 title: item?.name || 'Item',
                 quantity: item?.quantity || 1,
-                price: '0.00',
-                properties: [
-                    { name: 'EGP Price', value: String(Number(item?.price || 0)) },
-                    { name: 'EGP Line Total', value: String(Math.round(Number(item?.price || 0) * (item?.quantity || 1) * 100) / 100) },
-                ]
+                price: String(Number(item?.price || 0)),
             };
             if (numericVariantId && numericVariantId !== 'undefined' && numericVariantId !== 'null') {
-                lineItem.properties.push({ name: 'variant_id', value: numericVariantId });
+                lineItem.properties = [{ name: 'variant_id', value: numericVariantId }];
             }
             return lineItem;
         });
@@ -150,14 +98,8 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
                 // Store the canonical EGP total in note_attributes so it
                 // survives as-is even if Shopify re-prices in USD internally.
                 note_attributes: [
-                    { name: 'Currency', value: 'EGP' },
-                    { name: 'EGP Total (excl. shipping)', value: String(Math.round((egpTotal - 100) * 100) / 100 || 0) },
-                    { name: 'EGP Shipping', value: '100.00' },
-                    { name: 'EGP Grand Total', value: String(egpTotal || 0) },
-                    ...cartItems.map((item, i) => ({
-                        name: `Item ${i + 1}: ${item?.name || 'Item'}`,
-                        value: `Qty ${item?.quantity || 1} x EGP ${Number(item?.price || 0)} = EGP ${Math.round(Number(item?.price || 0) * (item?.quantity || 1) * 100) / 100}`
-                    }))
+                    { name: 'egp_total', value: String(egpTotal || 0) },
+                    { name: 'currency', value: 'EGP' }
                 ],
                 use_customer_default_address: false,
                 ...extra
@@ -566,9 +508,9 @@ app.get('/api/checkout/success', (req, res) => {
 });
 
 /**
- * Render full checkout page from cart payload
+ * Render full checkout page from cart payload — Nazeerah-style design
  * POST /api/checkout/render
- * Expects body: { total, items: [{ id, name, category, price, quantity }] }
+ * Expects body: { total, items: [{ id, name, category, price, quantity, image }] }
  */
 function getCartPayloadCheckoutPageHtml(cart) {
     const safeCartJson = JSON.stringify(cart || { total: 0, items: [] }).replace(/</g, '\\u003c');
@@ -576,396 +518,945 @@ function getCartPayloadCheckoutPageHtml(cart) {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Checkout</title>
-    <style>
-        :root {
-            color-scheme: light dark;
-        }
-        body {
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            margin: 0;
-            padding: 0;
-            background: #f5f5f5;
-        }
-        .page {
-            max-width: 720px;
-            margin: 2rem auto;
-            padding: 1.5rem;
-            background: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-        }
-        h1, h2 {
-            margin: 0 0 1rem;
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: 1.2fr 1fr;
-            gap: 1.5rem;
-        }
-        @media (max-width: 768px) {
-            .grid {
-                grid-template-columns: 1fr;
-            }
-        }
-        .card {
-            border-radius: 10px;
-            border: 1px solid #eee;
-            padding: 1rem;
-        }
-        .items {
-            list-style: none;
-            padding: 0;
-            margin: 0 0 0.75rem;
-        }
-        .items li {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            padding: 0.35rem 0;
-            border-bottom: 1px dashed #eee;
-            font-size: 0.95rem;
-        }
-        .items li:last-child {
-            border-bottom: none;
-        }
-        .item-name {
-            font-weight: 500;
-        }
-        .item-meta {
-            color: #777;
-            font-size: 0.85rem;
-        }
-        .price {
-            font-variant-numeric: tabular-nums;
-        }
-        .total-row {
-            display: flex;
-            justify-content: space-between;
-            font-weight: 600;
-            margin-top: 0.75rem;
-            padding-top: 0.75rem;
-            border-top: 1px solid #ddd;
-        }
-        .field {
-            margin-bottom: 0.75rem;
-        }
-        .field label {
-            display: block;
-            font-size: 0.85rem;
-            margin-bottom: 0.25rem;
-        }
-        .field input, .field select {
-            width: 100%;
-            box-sizing: border-box;
-            padding: 0.55rem 0.6rem;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            font-size: 0.9rem;
-        }
-        .field-row {
-            display: flex;
-            gap: 0.75rem;
-        }
-        .field-row .field {
-            flex: 1;
-        }
-        .paymob-options {
-            display: flex;
-            flex-direction: column;
-            gap: 0.35rem;
-            margin-bottom: 0.75rem;
-            font-size: 0.9rem;
-        }
-        .paymob-options label {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-        .checkout-button {
-            width: 100%;
-            padding: 0.9rem 1.2rem;
-            font-size: 0.95rem;
-            background: #000;
-            color: #fff;
-            border: none;
-            border-radius: 999px;
-            cursor: pointer;
-            font-weight: 600;
-        }
-        .checkout-button:hover:not(:disabled) {
-            background: #333;
-        }
-        .checkout-button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .note {
-            font-size: 0.8rem;
-            color: #777;
-            margin-top: 0.35rem;
-        }
-        .error {
-            color: #c00;
-            margin-top: 0.5rem;
-            font-size: 0.85rem;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checkout — Nazeerah</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #faf9f7;
+      --white: #ffffff;
+      --border: #e8e4df;
+      --border-focus: #b5a898;
+      --text: #1a1a1a;
+      --muted: #888077;
+      --gold: #9a8660;
+      --gold-hover: #7d6d4e;
+      --label: #6b6258;
+      --error: #b03a2e;
+      --radius: 3px;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Jost', sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .site-header {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 60px;
+    }
+    .site-header .breadcrumb {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+    }
+    .site-header .breadcrumb a { color: var(--muted); text-decoration: none; }
+    .site-header .breadcrumb a:hover { color: var(--text); }
+    .site-header .breadcrumb .sep { margin: 0 6px; }
+    .logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-decoration: none;
+      color: var(--text);
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .cart-icon {
+      margin-left: auto;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    .cart-icon svg { width: 20px; height: 20px; }
+
+    /* ── Layout ── */
+    .checkout-layout {
+      display: flex;
+      min-height: calc(100vh - 60px);
+    }
+
+    /* Left panel — form */
+    .form-panel {
+      flex: 0 0 55%;
+      max-width: 55%;
+      padding: 3rem 4rem 3rem 6%;
+      background: var(--white);
+      border-right: 1px solid var(--border);
+    }
+
+    /* Right panel — order summary */
+    .summary-panel {
+      flex: 1;
+      padding: 3rem 5% 3rem 3rem;
+      background: var(--bg);
+    }
+
+    @media (max-width: 860px) {
+      .checkout-layout { flex-direction: column; }
+      .form-panel { flex: none; max-width: 100%; padding: 2rem 1.5rem; border-right: none; border-bottom: 1px solid var(--border); }
+      .summary-panel { padding: 2rem 1.5rem; }
+    }
+
+    /* ── Section headings ── */
+    .section-title {
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 1.1rem;
+      margin-top: 2rem;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* ── Fields ── */
+    .field { margin-bottom: 10px; }
+    .field-row { display: flex; gap: 10px; }
+    .field-row .field { flex: 1; }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--label);
+      margin-bottom: 5px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--white);
+      color: var(--text);
+      font-family: 'Jost', sans-serif;
+      font-size: 13.5px;
+      font-weight: 300;
+      transition: border-color 0.2s;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .field input::placeholder { color: #c0bab3; }
+    .field input:focus,
+    .field select:focus { border-color: var(--border-focus); }
+
+    .field .input-wrap { position: relative; }
+    .field .input-icon {
+      position: absolute;
+      right: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+      display: flex;
+    }
+    .field .input-icon svg { width: 15px; height: 15px; }
+
+    /* Select chevron */
+    .select-wrap { position: relative; }
+    .select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--muted);
+      pointer-events: none;
+    }
+    .select-wrap select { padding-right: 30px; cursor: pointer; }
+
+    /* Country label inside field */
+    .country-label {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .select-country {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--white);
+      padding: 6px 12px 8px;
+    }
+    .select-country .country-label { font-size: 10px; color: var(--muted); }
+    .select-country .country-value {
+      font-size: 13.5px;
+      font-family: 'Jost', sans-serif;
+      font-weight: 300;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Checkbox */
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .checkbox-field input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      accent-color: var(--gold);
+      cursor: pointer;
+    }
+
+    /* ── Shipping method box ── */
+    .shipping-box {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg);
+      margin-bottom: 10px;
+    }
+    .shipping-box-left .shipping-name {
+      font-size: 13.5px;
+      font-weight: 400;
+      color: var(--text);
+    }
+    .shipping-box-left .shipping-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .shipping-price {
+      font-size: 13.5px;
+      color: var(--text);
+    }
+
+    /* ── Payment options ── */
+    .payment-subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .payment-option {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 1px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      overflow: hidden;
+    }
+    .payment-option:has(input:checked),
+    .payment-option.selected {
+      border-color: var(--border-focus);
+    }
+    .payment-option-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      background: var(--white);
+    }
+    .payment-option-header label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      flex: 1;
+      font-size: 13.5px;
+      font-weight: 400;
+    }
+    .payment-option-header input[type="radio"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--text);
+      flex-shrink: 0;
+    }
+    .payment-badges {
+      display: flex;
+      gap: 4px;
+      margin-left: auto;
+      align-items: center;
+    }
+    .badge {
+      height: 20px;
+      padding: 0 6px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 10px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+    }
+    .badge-visa { font-style: italic; font-size: 12px; font-weight: 600; color: #1a1f71; border-color: #c8c8c8; }
+    .badge-mc { font-size: 10px; font-weight: 700; color: #eb001b; border-color: #c8c8c8; }
+    .badge-amex { background: #2671b2; color: white; border-color: #2671b2; font-size: 9px; }
+    .badge-more { background: var(--bg); }
+
+    /* Card fields panel */
+    .card-fields {
+      padding: 0 14px 14px;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      display: none;
+    }
+    .card-fields.active { display: block; padding-top: 12px; }
+
+    /* COD option */
+    .cod-option {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 1px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .cod-option:has(input:checked) { border-color: var(--border-focus); }
+    .cod-option label {
+      cursor: pointer;
+      font-size: 13.5px;
+      font-weight: 400;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cod-option input[type="radio"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--text);
+    }
+
+    /* ── Pay button ── */
+    .pay-btn {
+      width: 100%;
+      margin-top: 1.5rem;
+      padding: 14px 20px;
+      background: var(--gold);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .pay-btn:hover:not(:disabled) { background: var(--gold-hover); }
+    .pay-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    .error-msg {
+      color: var(--error);
+      font-size: 12px;
+      margin-top: 0.5rem;
+      display: none;
+    }
+
+    /* ── Order summary (right panel) ── */
+    .order-items { margin-bottom: 1.5rem; }
+
+    .order-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .order-item:last-child { border-bottom: none; }
+
+    .item-img-wrap {
+      position: relative;
+      flex-shrink: 0;
+      width: 60px;
+      height: 75px;
+    }
+    .item-img-wrap img {
+      width: 60px;
+      height: 75px;
+      object-fit: cover;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      background: #f0ede9;
+    }
+    .item-img-placeholder {
+      width: 60px;
+      height: 75px;
+      background: #ede9e3;
+      border-radius: 2px;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .item-img-placeholder svg { width: 22px; height: 22px; color: #bbb; }
+    .item-qty-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 18px;
+      height: 18px;
+      background: var(--muted);
+      color: white;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .item-info { flex: 1; }
+    .item-name {
+      font-size: 13.5px;
+      font-weight: 400;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .item-variant {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .item-price {
+      font-size: 13.5px;
+      font-weight: 400;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    /* Discount code */
+    .discount-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 1.2rem;
+    }
+    .discount-row input {
+      flex: 1;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: 'Jost', sans-serif;
+      font-size: 13px;
+      font-weight: 300;
+      outline: none;
+      background: var(--white);
+      color: var(--text);
+      transition: border-color 0.2s;
+    }
+    .discount-row input::placeholder { color: #c0bab3; }
+    .discount-row input:focus { border-color: var(--border-focus); }
+    .discount-row button {
+      padding: 9px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--white);
+      font-family: 'Jost', sans-serif;
+      font-size: 12.5px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      color: var(--text);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .discount-row button:hover { border-color: var(--border-focus); background: var(--bg); }
+
+    /* Totals */
+    .totals { border-top: 1px solid var(--border); padding-top: 1rem; }
+    .total-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+    .total-line .tl-label { color: var(--muted); }
+    .total-line .tl-value { color: var(--text); }
+    .total-line.grand {
+      padding-top: 10px;
+      margin-top: 6px;
+      border-top: 1px solid var(--border);
+    }
+    .total-line.grand .tl-label {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .total-line.grand .tl-value {
+      font-size: 18px;
+      font-weight: 500;
+    }
+    .total-line.grand .currency-code {
+      font-size: 11px;
+      font-weight: 300;
+      color: var(--muted);
+      margin-right: 4px;
+      letter-spacing: 0.05em;
+    }
+    .shipping-info-icon {
+      display: inline-flex;
+      vertical-align: middle;
+      margin-left: 4px;
+      color: var(--muted);
+    }
+    .shipping-info-icon svg { width: 13px; height: 13px; }
+  </style>
 </head>
 <body>
-<main class="page">
-    <h1>Checkout</h1>
-    <div class="grid">
-        <section class="card">
-            <h2>Order summary</h2>
-            <div id="order-summary"></div>
-        </section>
-        <section class="card">
-            <h2>Shipping & payment</h2>
-            <form id="checkout-form">
-                <div class="field-row">
-                    <div class="field">
-                        <label for="first_name">First name</label>
-                        <input id="first_name" name="first_name" required autocomplete="given-name" />
-                    </div>
-                    <div class="field">
-                        <label for="last_name">Last name</label>
-                        <input id="last_name" name="last_name" required autocomplete="family-name" />
-                    </div>
-                </div>
-                <div class="field">
-                    <label for="email">Email</label>
-                    <input id="email" name="email" type="email" required autocomplete="email" />
-                </div>
-                <div class="field">
-                    <label for="phone">Phone</label>
-                    <input id="phone" name="phone" required autocomplete="tel" />
-                </div>
-                <div class="field">
-                    <label for="address1">Address</label>
-                    <input id="address1" name="address1" required autocomplete="address-line1" />
-                </div>
-                <div class="field">
-                    <label for="address2">Apartment, suite, etc. (optional)</label>
-                    <input id="address2" name="address2" autocomplete="address-line2" />
-                </div>
-                <div class="field-row">
-                    <div class="field">
-                        <label for="city">City</label>
-                        <input id="city" name="city" required autocomplete="address-level2" />
-                    </div>
-                    <div class="field">
-                        <label for="state">State / Governorate</label>
-                        <input id="state" name="state" required autocomplete="address-level1" />
-                    </div>
-                </div>
-                <div class="field-row">
-                    <div class="field">
-                        <label for="zip">Postal code</label>
-                        <input id="zip" name="zip" autocomplete="postal-code" />
-                    </div>
-                    <div class="field">
-                        <label for="country">Country</label>
-                        <select id="country" name="country" disabled>
-                            <option value="EG" selected>Egypt</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="field">
-                    <label>Paymob payment option</label>
-                    <div class="paymob-options">
-                        <label><input type="radio" name="paymob_method" value="card" checked /> Card</label>
-                        <label><input type="radio" name="paymob_method" value="wallet" /> Mobile wallet</label>
-                        <label><input type="radio" name="paymob_method" value="cod" /> Cash on delivery</label>
-                    </div>
-                    <p class="note">Payment is securely processed by Paymob.</p>
-                </div>
-                <button type="submit" id="pay-btn" class="checkout-button">
-                    Pay with Paymob
-                </button>
-                <p id="error" class="error" style="display:none;"></p>
-            </form>
-        </section>
+
+<!-- Header -->
+<header class="site-header">
+  <nav class="breadcrumb" aria-label="breadcrumb">
+    <a href="#">Cart</a>
+    <span class="sep">›</span>
+    <strong>Information</strong>
+    <span class="sep">›</span>
+    <span>Shipping</span>
+    <span class="sep">›</span>
+    <span>Payment</span>
+  </nav>
+  <a href="/" class="logo">Nazeerah</a>
+  <div class="cart-icon" aria-label="cart">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <path d="M16 10a4 4 0 01-8 0"/>
+    </svg>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="checkout-layout">
+
+  <!-- LEFT: Form -->
+  <div class="form-panel">
+    <form id="checkout-form" novalidate>
+
+      <!-- Contact -->
+      <div class="section-title">Contact</div>
+      <div class="field">
+        <div class="input-wrap">
+          <input id="email" name="email" type="email" placeholder="Email" autocomplete="email" required />
+        </div>
+      </div>
+      <label class="checkbox-field">
+        <input type="checkbox" name="newsletter" />
+        Email me with news and offers
+      </label>
+
+      <!-- Delivery -->
+      <div class="section-title">Delivery</div>
+
+      <div class="field">
+        <div class="select-country">
+          <span class="country-label">Country/Region</span>
+          <div class="country-value">
+            Egypt
+            <svg viewBox="0 0 10 6" width="10" height="6" fill="none">
+              <path d="M1 1l4 4 4-4" stroke="#888" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <div class="input-wrap">
+            <input id="first_name" name="first_name" type="text" placeholder="First name" autocomplete="given-name" required />
+          </div>
+        </div>
+        <div class="field">
+          <div class="input-wrap">
+            <input id="last_name" name="last_name" type="text" placeholder="Last name" autocomplete="family-name" required />
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="input-wrap">
+          <input id="address1" name="address1" type="text" placeholder="Address" autocomplete="address-line1" required />
+          <span class="input-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="input-wrap">
+          <input id="address2" name="address2" type="text" placeholder="Apartment, suite, etc. (optional)" autocomplete="address-line2" />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <div class="input-wrap">
+            <input id="city" name="city" type="text" placeholder="City" autocomplete="address-level2" required />
+          </div>
+        </div>
+        <div class="field">
+          <div class="input-wrap">
+            <input id="state" name="state" type="text" placeholder="Governorate" autocomplete="address-level1" required />
+          </div>
+        </div>
+        <div class="field">
+          <div class="input-wrap">
+            <input id="zip" name="zip" type="text" placeholder="ZIP code" autocomplete="postal-code" />
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="input-wrap">
+          <input id="phone" name="phone" type="tel" placeholder="Phone (optional)" autocomplete="tel" />
+          <span class="input-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+            </svg>
+          </span>
+        </div>
+      </div>
+
+      <!-- Shipping method -->
+      <div class="section-title">Shipping method</div>
+      <div class="shipping-box">
+        <div class="shipping-box-left">
+          <div class="shipping-name">Standard Shipping</div>
+          <div class="shipping-desc">2 to 5 business days</div>
+        </div>
+        <div class="shipping-price">100 EGP</div>
+      </div>
+
+      <!-- Payment -->
+      <div class="section-title">Payment</div>
+      <p class="payment-subtitle">All transactions are secure and encrypted.</p>
+
+      <!-- Credit card option -->
+      <div class="payment-option selected" id="opt-card">
+        <div class="payment-option-header">
+          <label>
+            <input type="radio" name="paymob_method" value="card" checked onchange="onPaymentChange(this)" />
+            Credit card
+          </label>
+          <div class="payment-badges">
+            <span class="badge badge-visa">VISA</span>
+            <span class="badge badge-mc">MC</span>
+            <span class="badge badge-amex">AMEX</span>
+            <span class="badge badge-more">+5</span>
+          </div>
+        </div>
+        <div class="card-fields active" id="card-fields">
+          <div class="field">
+            <div class="input-wrap">
+              <input type="text" placeholder="Card number" inputmode="numeric" autocomplete="cc-number" />
+              <span class="input-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+              </span>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <input type="text" placeholder="Expiration date (MM / YY)" autocomplete="cc-exp" />
+            </div>
+            <div class="field">
+              <div class="input-wrap">
+                <input type="text" placeholder="Security code" autocomplete="cc-csc" />
+                <span class="input-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <input type="text" placeholder="Name on card" autocomplete="cc-name" />
+          </div>
+          <label class="checkbox-field" style="margin-top:4px;margin-bottom:0;">
+            <input type="checkbox" checked />
+            Use shipping address as billing address
+          </label>
+        </div>
+      </div>
+
+      <!-- Wallet option -->
+      <div class="payment-option" id="opt-wallet">
+        <div class="payment-option-header">
+          <label>
+            <input type="radio" name="paymob_method" value="wallet" onchange="onPaymentChange(this)" />
+            Mobile wallet
+          </label>
+        </div>
+      </div>
+
+      <!-- COD -->
+      <div class="cod-option" id="opt-cod">
+        <label>
+          <input type="radio" name="paymob_method" value="cod" onchange="onPaymentChange(this)" />
+          Cash on Delivery
+        </label>
+      </div>
+
+      <button type="submit" id="pay-btn" class="pay-btn">Pay now</button>
+      <p id="error-msg" class="error-msg"></p>
+
+    </form>
+  </div>
+
+  <!-- RIGHT: Order summary -->
+  <div class="summary-panel">
+    <div id="order-items" class="order-items"></div>
+
+    <div class="discount-row">
+      <input type="text" placeholder="Discount code or gift card" />
+      <button type="button">Apply</button>
     </div>
-</main>
+
+    <div class="totals" id="totals"></div>
+  </div>
+
+</div>
+
 <script>
-    (function() {
-        var CART = ${safeCartJson};
-        var summaryEl = document.getElementById('order-summary');
-        var form = document.getElementById('checkout-form');
-        var payBtn = document.getElementById('pay-btn');
-        var errEl = document.getElementById('error');
+(function () {
+  var CART = ${safeCartJson};
 
-        function formatPrice(value) {
-            return new Intl.NumberFormat('en-EG', { style: 'currency', currency: 'EGP' }).format(value || 0);
+  /* ── Render order items ── */
+  function fmt(v) {
+    return new Intl.NumberFormat('en-EG', { style: 'currency', currency: 'EGP' }).format(v || 0);
+  }
+
+  function renderItems() {
+    var el = document.getElementById('order-items');
+    var items = (CART && CART.items) || [];
+    if (!items.length) { el.innerHTML = '<p style="color:var(--muted);font-size:13px;">No items in cart.</p>'; return; }
+
+    var html = '';
+    items.forEach(function (item) {
+      var imgHtml = item.image
+        ? '<img src="' + item.image + '" alt="' + (item.name || '') + '" />'
+        : '<div class="item-img-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>';
+
+      html += '<div class="order-item">'
+        + '<div class="item-img-wrap">'
+        +   imgHtml
+        +   '<span class="item-qty-badge">' + (item.quantity || 1) + '</span>'
+        + '</div>'
+        + '<div class="item-info">'
+        +   '<div class="item-name">' + (item.name || 'Item') + '</div>'
+        +   (item.category ? '<div class="item-variant">' + item.category + '</div>' : '')
+        + '</div>'
+        + '<div class="item-price">' + fmt((item.price || 0) * (item.quantity || 1)) + '</div>'
+        + '</div>';
+    });
+    el.innerHTML = html;
+  }
+
+  function renderTotals() {
+    var el = document.getElementById('totals');
+    var subtotal = (CART && CART.total) || 0;
+    var shipping = 100;
+    var grand = subtotal + shipping;
+
+    el.innerHTML =
+      '<div class="total-line">'
+      + '<span class="tl-label">Subtotal &middot; ' + ((CART && CART.items && CART.items.length) || 0) + ' items</span>'
+      + '<span class="tl-value">' + fmt(subtotal) + '</span>'
+      + '</div>'
+      + '<div class="total-line">'
+      + '<span class="tl-label">Shipping'
+      + '<span class="shipping-info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg></span>'
+      + '</span>'
+      + '<span class="tl-value">100 EGP</span>'
+      + '</div>'
+      + '<div class="total-line grand">'
+      + '<span class="tl-label">Total</span>'
+      + '<span class="tl-value"><span class="currency-code">EGP</span>' + fmt(grand) + '</span>'
+      + '</div>';
+  }
+
+  renderItems();
+  renderTotals();
+
+  /* ── Payment method toggle ── */
+  window.onPaymentChange = function (input) {
+    var cardFields = document.getElementById('card-fields');
+    var opts = ['opt-card', 'opt-wallet', 'opt-cod'];
+    opts.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.remove('selected');
+    });
+
+    if (input.value === 'card') {
+      document.getElementById('opt-card').classList.add('selected');
+      cardFields.classList.add('active');
+    } else if (input.value === 'wallet') {
+      document.getElementById('opt-wallet').classList.add('selected');
+      cardFields.classList.remove('active');
+    } else if (input.value === 'cod') {
+      document.getElementById('opt-cod').classList.add('selected');
+      cardFields.classList.remove('active');
+    }
+  };
+
+  /* ── Form submit ── */
+  var form = document.getElementById('checkout-form');
+  var payBtn = document.getElementById('pay-btn');
+  var errEl = document.getElementById('error-msg');
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    errEl.style.display = 'none';
+    payBtn.disabled = true;
+    payBtn.textContent = 'Processing...';
+
+    try {
+      var fd = new FormData(form);
+
+      var customer = {
+        email: fd.get('email'),
+        firstName: fd.get('first_name'),
+        lastName: fd.get('last_name'),
+        phone: fd.get('phone'),
+        city: fd.get('city'),
+        address1: fd.get('address1'),
+        address2: fd.get('address2'),
+        zip: fd.get('zip'),
+        province: fd.get('state'),
+        country: 'EG',
+        country_code: 'EG'
+      };
+
+      var billingData = {
+        email: customer.email,
+        first_name: customer.firstName,
+        last_name: customer.lastName,
+        phone_number: customer.phone,
+        city: customer.city || 'Cairo',
+        street: customer.address1 || 'NA',
+        building: customer.address2 || 'NA',
+        apartment: 'NA',
+        floor: 'NA',
+        postal_code: customer.zip || '00000',
+        state: customer.province || 'Cairo'
+      };
+
+      var cartItems = ((CART && CART.items) || []).map(function (item) {
+        var rawVariant = item.variantId || item.variant_id || item.id;
+        return {
+          variantId: 'gid://shopify/ProductVariant/' + rawVariant,
+          quantity: item.quantity,
+          name: item.name,
+          price: item.price,
+          description: item.category || item.name
+        };
+      });
+
+      var body = {
+        cartItems: cartItems,
+        customer: customer,
+        billingData: billingData,
+        paymobMethod: fd.get('paymob_method')
+      };
+
+      var res = await fetch('/api/checkout/egypt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      var text = await res.text();
+      var json;
+      try { json = JSON.parse(text); } catch (_) { json = null; }
+
+      if (!res.ok) {
+        showError((json && (json.error || json.message)) || text || 'Checkout failed');
+        return;
+      }
+      if (!json) { showError(text || 'Checkout failed'); return; }
+
+      if (json.success && json.paymentUrl) {
+        window.location.href = json.paymentUrl;
+      } else if (json.success && json.cod) {
+        if (json.redirectUrl) {
+          window.location.href = json.redirectUrl;
+        } else {
+          payBtn.disabled = true;
+          payBtn.textContent = 'Order placed (Cash on delivery)';
         }
+      } else {
+        showError(json.error || 'Checkout failed');
+      }
+    } catch (err) {
+      showError(err.message || 'Checkout failed. Please try again.');
+    } finally {
+      if (!payBtn.disabled) {
+        payBtn.disabled = false;
+        payBtn.textContent = 'Pay now';
+      }
+    }
+  });
 
-        function renderSummary() {
-            var cart = CART || { total: 0, items: [] };
-            if (!cart.items || !cart.items.length) {
-                summaryEl.textContent = 'No items in cart.';
-                return;
-            }
-            var html = '<ul class="items">';
-            cart.items.forEach(function(item) {
-                html += '<li>' +
-                    '<div>' +
-                        '<div class="item-name">' + (item.name || '') + '</div>' +
-                        '<div class="item-meta">Qty ' + (item.quantity || 1) + (item.category ? ' • ' + item.category : '') + '</div>' +
-                    '</div>' +
-                    '<div class="price">' + formatPrice((item.price || 0) * (item.quantity || 1)) + '</div>' +
-                '</li>';
-            });
-            html += '</ul>';
-            var shipping = 100;
-            var grandTotal = (cart.total || 0) + shipping;
-            html += '<div class="total-row" style="font-weight:400;color:#555;"><span>Subtotal</span><span class="price">' + formatPrice(cart.total || 0) + '</span></div>';
-            html += '<div class="total-row" style="font-weight:400;color:#555;"><span>Shipping (flat rate)</span><span class="price">' + formatPrice(shipping) + '</span></div>';
-            html += '<div class="total-row"><span>Total</span><span class="price">' + formatPrice(grandTotal) + '</span></div>';
-            summaryEl.innerHTML = html;
-        }
-
-        function showError(msg) {
-            errEl.textContent = msg;
-            errEl.style.display = 'block';
-        }
-
-        form.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            errEl.style.display = 'none';
-            payBtn.disabled = true;
-            payBtn.textContent = 'Processing...';
-
-            try {
-                var cart = CART || { total: 0, items: [] };
-                var fd = new FormData(form);
-
-                var customer = {
-                    email: fd.get('email'),
-                    firstName: fd.get('first_name'),
-                    lastName: fd.get('last_name'),
-                    phone: fd.get('phone'),
-                    city: fd.get('city'),
-                    address1: fd.get('address1'),
-                    address2: fd.get('address2'),
-                    zip: fd.get('zip'),
-                    province: fd.get('state'),
-                    country: 'EG',
-                    country_code: 'EG'
-                };
-
-                var billingData = {
-                    email: customer.email,
-                    first_name: customer.firstName,
-                    last_name: customer.lastName,
-                    phone_number: customer.phone,
-                    city: customer.city || 'Cairo',
-                    street: customer.address1 || 'NA',
-                    building: customer.address2 || 'NA',
-                    apartment: 'NA',
-                    floor: 'NA',
-                    postal_code: customer.zip || '00000',
-                    state: customer.province || 'Cairo'
-                };
-
-                var cartItems = (cart.items || []).map(function(item) {
-                    var rawVariant = item.variantId || item.variant_id || item.id;
-                    return {
-                        variantId: 'gid://shopify/ProductVariant/' + rawVariant,
-                        quantity: item.quantity,
-                        name: item.name,
-                        price: item.price,
-                        description: item.category || item.name
-                    };
-                });
-
-                var body = {
-                    cartItems: cartItems,
-                    customer: customer,
-                    billingData: billingData,
-                    paymobMethod: fd.get('paymob_method')
-                };
-
-                var res = await fetch('/api/checkout/egypt', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-                var text = await res.text();
-                var json;
-                try { json = JSON.parse(text); } catch (_) { json = null; }
-
-                if (!res.ok) {
-                    showError((json && (json.error || json.message)) || text || 'Checkout failed');
-                    return;
-                }
-
-                if (!json) {
-                    showError(text || 'Checkout failed');
-                    return;
-                }
-                if (json.success && json.paymentUrl) {
-                    // Card / wallet – redirect to Paymob iframe
-                    window.location.href = json.paymentUrl;
-                } else if (json.success && json.cod) {
-                    // Cash on delivery – redirect to a normal thank-you / confirmation page
-                    if (json.redirectUrl) {
-                        window.location.href = json.redirectUrl;
-                    } else {
-                        payBtn.disabled = true;
-                        payBtn.textContent = 'Order placed (Cash on delivery)';
-                    }
-                } else {
-                    showError(json.error || 'Checkout failed');
-                }
-            } catch (err) {
-                showError(err.message || 'Checkout failed. Please try again.');
-            } finally {
-                payBtn.disabled = false;
-                payBtn.textContent = 'Pay with Paymob';
-            }
-        });
-
-        renderSummary();
-    })();
+  function showError(msg) {
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+    payBtn.disabled = false;
+    payBtn.textContent = 'Pay now';
+  }
+})();
 </script>
 </body>
 </html>`;
 }
 
-app.post('/api/checkout/render', async (req, res) => {
-    try {
-        const { total, items } = req.body || {};
-
-        // Convert USD prices → EGP before storing in session.
-        // The Shopify storefront sends prices in the store's base currency (USD).
-        // Everything downstream (Paymob, draft order notes) must work in EGP.
-        const rate = await getUsdToEgpRate();
-        console.log(`💱 Converting cart prices USD→EGP at rate: ${rate}`);
-
-        const egpItems = (Array.isArray(items) ? items : []).map(item => ({
-            ...item,
-            price: convertUsdToEgp(item.price || 0, rate)
-        }));
-
-        const egpTotal = typeof total === 'number'
-            ? convertUsdToEgp(total, rate)
-            : egpItems.reduce((s, i) => s + (i.price * (i.quantity || 1)), 0);
-
-        const cart = { total: egpTotal, items: egpItems };
-        const token = createCheckoutToken();
-        checkoutSessions.set(token, { cart, createdAt: Date.now() });
-        const baseUrl = getBaseUrl(req);
-        const redirectUrl = baseUrl
-            ? (baseUrl.replace(/\/$/, '') + '/api/checkout/page?token=' + token)
-            : ('/api/checkout/page?token=' + token);
-        res.json({ success: true, redirectUrl });
-    } catch (err) {
-        console.error('Error in /api/checkout/render:', err.message);
-        res.status(500).json({ success: false, error: err.message });
-    }
+app.post('/api/checkout/render', (req, res) => {
+    const { total, items } = req.body || {};
+    const cart = {
+        total: typeof total === 'number' ? total : 0,
+        items: Array.isArray(items) ? items : []
+    };
+    const token = createCheckoutToken();
+    checkoutSessions.set(token, { cart, createdAt: Date.now() });
+    const baseUrl = getBaseUrl(req);
+    const redirectUrl = baseUrl ? (baseUrl.replace(/\/$/, '') + '/api/checkout/page?token=' + token) : ('/api/checkout/page?token=' + token);
+    res.json({ success: true, redirectUrl });
 });
 
 app.get('/api/checkout/page', (req, res) => {
@@ -1013,5 +1504,5 @@ app.get('/api/debug/env', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`\uD83D\uDE80 Server running on port ${PORT}`);
 });
