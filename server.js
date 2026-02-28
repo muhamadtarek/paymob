@@ -327,6 +327,30 @@ app.post('/api/checkout/egypt', async (req, res) => {
 
                 const shopifyOrderId = completeRes.data?.draft_order?.order_id;
 
+                // Tag the real Shopify order with payment method booleans
+                if (shopifyOrderId) {
+                    await axios.put(
+                        `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
+                        {
+                            order: {
+                                id: shopifyOrderId,
+                                note_attributes: [
+                                    { name: 'payment_method', value: 'cod' },
+                                    { name: 'is_cod',    value: 'true' },
+                                    { name: 'is_card',   value: 'false' },
+                                    { name: 'is_wallet', value: 'false' }
+                                ]
+                            }
+                        },
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN
+                            }
+                        }
+                    );
+                }
+
                 return res.json({
                     success: true,
                     cod: true,
@@ -455,12 +479,16 @@ app.post('/api/paymob/callback', async (req, res) => {
         if (data.success === 'true' || data.success === true) {
             const shopifyDraftOrderId = data.order.merchant_order_id;
 
+            // Detect payment method from Paymob source_data_type
+            const sourceType = String(data.source_data_type || '').toLowerCase();
+            const isWallet = sourceType === 'wallet';
+            const isCard   = !isWallet; // card / token / everything else that isn't wallet
+            const method   = isWallet ? 'wallet' : 'card';
+
             // Complete the Shopify draft order
-            await axios.put(
+            const completeRes = await axios.put(
                 `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders/${shopifyDraftOrderId}/complete.json`,
-                {
-                    payment_pending: false
-                },
+                { payment_pending: false },
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -469,7 +497,33 @@ app.post('/api/paymob/callback', async (req, res) => {
                 }
             );
 
-            console.log(`✅ Order ${shopifyDraftOrderId} completed successfully`);
+            const shopifyOrderId = completeRes.data?.draft_order?.order_id;
+
+            // Tag the real Shopify order with payment method booleans
+            if (shopifyOrderId) {
+                await axios.put(
+                    `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
+                    {
+                        order: {
+                            id: shopifyOrderId,
+                            note_attributes: [
+                                { name: 'payment_method', value: method },
+                                { name: 'is_cod',    value: 'false' },
+                                { name: 'is_card',   value: String(isCard) },
+                                { name: 'is_wallet', value: String(isWallet) }
+                            ]
+                        }
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN
+                        }
+                    }
+                );
+            }
+
+            console.log(`✅ Order ${shopifyDraftOrderId} completed successfully (method: ${method})`);
         }
 
         res.status(200).json({ received: true });
