@@ -35,14 +35,15 @@ function getMissingEnv(keys) {
  * Create a Draft Order (Alternative method for saving cart)
  */
 async function createDraftOrder(cartItems, customer, egpTotal) {
+    // Custom line items with explicit prices; variant_id stored in properties for reference.
     function buildEgpLineItems() {
         return cartItems.map((item) => {
             const raw = item?.variantId;
             const numericVariantId = raw ? String(raw).split('/').pop() : null;
             const unitPrice = Number(item?.price || 0);
             const qty = item?.quantity || 1;
-            // Price is set to 0 on the Shopify order (store currency is USD);
-            // real EGP amounts are stored as line item properties.
+            // Price is set to 0 on the Shopify order; the real EGP amounts
+            // are stored as line item properties for the team to see in the admin.
             const lineItem = {
                 title: item?.name || 'Item',
                 quantity: qty,
@@ -59,6 +60,7 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
         });
     }
 
+    // Build shipping address from customer object
     const shippingAddress = customer ? {
         first_name: customer.firstName || customer.first_name || '',
         last_name: customer.lastName || customer.last_name || '',
@@ -72,10 +74,10 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
         phone: customer.phone || ''
     } : undefined;
 
-    // Flat 100 EGP shipping fee — stored as note attribute only (line item price is 0.00 USD)
+    // Flat 100 EGP shipping fee
     const shippingLine = {
         title: 'Flat Rate Shipping',
-        price: '0.00',
+        price: '100.00',
         custom: true
     };
 
@@ -97,7 +99,6 @@ async function createDraftOrder(cartItems, customer, egpTotal) {
                 tags: 'paymob-pending',
                 note_attributes: [
                     { name: 'egp_total', value: String(egpTotal || 0) },
-                    { name: 'egp_shipping', value: '100' },
                     { name: 'currency', value: 'EGP' }
                 ],
                 use_customer_default_address: false,
@@ -137,6 +138,7 @@ async function paymobAuthenticate() {
         const response = await axios.post('https://accept.paymob.com/api/auth/tokens', {
             api_key: process.env.PAYMOB_API_KEY
         });
+
         return response.data.token;
     } catch (error) {
         console.error('Paymob auth error:', error.response?.data || error.message);
@@ -146,41 +148,43 @@ async function paymobAuthenticate() {
 
 /**
  * Step 2: Register Order with Paymob
- * Prices are in EGP — sent as-is (no × 100 conversion).
  */
-async function paymobRegisterOrder(authToken, merchantOrderId, items) {
+async function paymobRegisterOrder(authToken, amount, merchantOrderId, items) {
     try {
-        // Each item's amount is the EGP unit price as-is; quantity kept separate.
+        // amount_cents per item is the UNIT price in cents; grand total must equal
+        // sum(item.amount_cents * item.quantity) across all items including shipping.
         const paymobItems = items.map(item => ({
             name: item.name,
-            amount_cents: Number(item.price),   // EGP value passed directly — no conversion
+            amount_cents: Math.round(Number(item.price) * 100), // unit price in cents
             description: item.description || item.name,
             quantity: item.quantity
         }));
 
-        // Flat 100 EGP shipping as an explicit line item
+        // Add shipping as an explicit line item so the sum always matches
         paymobItems.push({
             name: 'Flat Rate Shipping',
-            amount_cents: 100,                  // 100 EGP passed directly — no conversion
+            amount_cents: 10000, // 100.00 EGP in cents
             description: 'Shipping',
             quantity: 1
         });
 
-        // Grand total = sum of (unit_egp * qty) for all items including shipping
-        const totalEgp = paymobItems.reduce(
+        // Recalculate grand total from items to guarantee it matches exactly
+        const totalCents = paymobItems.reduce(
             (sum, item) => sum + item.amount_cents * item.quantity, 0
         );
 
         const response = await axios.post('https://accept.paymob.com/api/ecommerce/orders', {
             auth_token: authToken,
             delivery_needed: false,
-            amount_cents: totalEgp,             // EGP total — no conversion
+            amount_cents: totalCents,
             currency: 'EGP',
             merchant_order_id: merchantOrderId,
             items: paymobItems
         });
 
-        return { ...response.data, _totalEgp: totalEgp };
+        // Return both the order data and the exact totalCents so the payment key
+        // call uses the same figure.
+        return { ...response.data, _totalCents: totalCents };
     } catch (error) {
         console.error('Paymob order registration error:', error.response?.data || error.message);
         throw error;
@@ -189,13 +193,12 @@ async function paymobRegisterOrder(authToken, merchantOrderId, items) {
 
 /**
  * Step 3: Get Payment Key from Paymob
- * amount is the EGP total — sent as-is (no × 100 conversion).
  */
-async function paymobGetPaymentKey(authToken, orderId, totalEgp, billingData, integrationId) {
+async function paymobGetPaymentKey(authToken, orderId, amount, billingData, integrationId) {
     try {
         const response = await axios.post('https://accept.paymob.com/api/acceptance/payment_keys', {
             auth_token: authToken,
-            amount_cents: totalEgp,             // EGP total — no conversion
+            amount_cents: Math.round(amount * 100),
             expiration: 3600,
             order_id: orderId,
             billing_data: {
@@ -229,23 +232,27 @@ async function paymobGetPaymentKey(authToken, orderId, totalEgp, billingData, in
 function getPaymobMethodConfig(paymobMethod) {
     const method = String(paymobMethod || '').toLowerCase();
 
+    // Fallback to default envs if method-specific ones aren't provided
     const defaults = {
         integrationId: process.env.PAYMOB_INTEGRATION_ID,
         iframeId: process.env.PAYMOB_IFRAME_ID
     };
 
     if (method === 'cod') {
+        // Cash on delivery – only needs an integration id, no iframe
         return {
             integrationId: process.env.PAYMOB_INTEGRATION_ID_COD || defaults.integrationId,
             iframeId: null
         };
     }
+
     if (method === 'wallet') {
         return {
             integrationId: process.env.PAYMOB_INTEGRATION_ID_WALLET || defaults.integrationId,
             iframeId: process.env.PAYMOB_IFRAME_ID_WALLET || defaults.iframeId
         };
     }
+
     if (method === 'card') {
         return {
             integrationId: process.env.PAYMOB_INTEGRATION_ID_CARD || defaults.integrationId,
@@ -265,29 +272,37 @@ app.post('/api/checkout/egypt', async (req, res) => {
 
         const missingShopify = getMissingEnv(['SHOPIFY_STORE_DOMAIN', 'SHOPIFY_ADMIN_ACCESS_TOKEN']);
         if (missingShopify.length) {
-            return res.status(500).json({ success: false, error: `Missing Shopify env vars: ${missingShopify.join(', ')}` });
+            return res.status(500).json({
+                success: false,
+                error: `Missing Shopify env vars: ${missingShopify.join(', ')}`
+            });
         }
 
         const missingPaymobBase = getMissingEnv(['PAYMOB_API_KEY']);
         if (missingPaymobBase.length) {
-            return res.status(500).json({ success: false, error: `Missing Paymob env vars: ${missingPaymobBase.join(', ')}` });
+            return res.status(500).json({
+                success: false,
+                error: `Missing Paymob env vars: ${missingPaymobBase.join(', ')}`
+            });
         }
 
         const paymobConfig = getPaymobMethodConfig(paymobMethod);
         if (!paymobConfig.integrationId) {
-            return res.status(500).json({ success: false, error: 'Paymob configuration missing (integration_id)' });
+            return res.status(500).json({
+                success: false,
+                error: 'Paymob configuration missing (integration_id)'
+            });
         }
 
-        // Calculate EGP total — prices are already in EGP, no conversion needed
-        const itemsTotal = cartItems.reduce(
-            (sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0
-        );
-        const totalEgp = itemsTotal + 100; // + 100 EGP flat shipping
+        // Step 1: Calculate total from cart items (prices are already in EGP).
+        const itemsTotal = cartItems.reduce((sum, item) => sum + (Number(item.price || 0) * (item.quantity || 1)), 0);
+        const totalAmount = itemsTotal + 100; // + 100 EGP flat shipping
 
-        // Create Shopify draft order (stores EGP amounts in note_attributes / properties)
-        const draftOrder = await createDraftOrder(cartItems, customer, totalEgp);
+        // Step 2: Create draft order with EGP total stored in note_attributes.
+        const draftOrder = await createDraftOrder(cartItems, customer, totalAmount);
 
-        // ── Cash on Delivery ──
+        // If cash-on-delivery, we don't need an iframe URL.
+        // Complete the draft order immediately so a real Shopify order is created, with payment pending.
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
             const codRedirectUrl =
                 process.env.COD_SUCCESS_URL ||
@@ -295,10 +310,13 @@ app.post('/api/checkout/egypt', async (req, res) => {
                     `${process.env.FRONTEND_URL.replace(/\/$/, '')}/cod-thank-you?draft=${draftOrder.id}`) ||
                 '/';
 
+            // Complete draft order as COD (payment still pending on Shopify side)
             try {
                 const completeRes = await axios.put(
                     `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
-                    { payment_pending: true },
+                    {
+                        payment_pending: true
+                    },
                     {
                         headers: {
                             'Content-Type': 'application/json',
@@ -318,37 +336,44 @@ app.post('/api/checkout/egypt', async (req, res) => {
                 });
             } catch (e) {
                 console.error('Error completing COD draft order:', e.response?.data || e.message);
-                return res.status(500).json({ success: false, error: 'Failed to complete COD order in Shopify' });
+                return res.status(500).json({
+                    success: false,
+                    error: 'Failed to complete COD order in Shopify'
+                });
             }
-        }
 
-        // ── Online payment (card / wallet) ──
+        }
 
         // Step 3: Authenticate with Paymob
         const authToken = await paymobAuthenticate();
 
-        // Step 4: Register order — pass EGP prices directly, no conversion
+        // Step 4: Register order with Paymob
         const paymobOrder = await paymobRegisterOrder(
             authToken,
-            draftOrder.id.toString(),
+            totalAmount,
+            draftOrder.id.toString(), // Use Shopify draft order ID
             cartItems.map(item => ({
                 name: item.name,
-                price: item.price,      // EGP unit price as-is
+                price: item.price,
                 quantity: item.quantity,
                 description: item.description
             }))
         );
 
-        // Step 5: Get payment key — pass EGP total directly, no conversion
+        // Use the exact cent value from paymobRegisterOrder so payment key amount_cents
+        // always matches the order amount_cents.
+        const exactTotalCents = paymobOrder._totalCents;
+
+        // Step 5: Get Paymob payment key
         const paymentKey = await paymobGetPaymentKey(
             authToken,
             paymobOrder.id,
-            paymobOrder._totalEgp,      // EGP total as-is
+            exactTotalCents / 100, // convert back to unit for the helper (it multiplies by 100 internally)
             billingData,
             paymobConfig.integrationId
         );
 
-        // Step 6: Build iframe URL
+        // Step 6: Return Paymob iframe URL
         const paymobIframeUrl = paymobConfig.iframeId
             ? `https://accept.paymob.com/api/acceptance/iframes/${paymobConfig.iframeId}?payment_token=${paymentKey}`
             : null;
@@ -365,6 +390,7 @@ app.post('/api/checkout/egypt', async (req, res) => {
         const status = error?.response?.status;
         const data = error?.response?.data;
 
+        // Axios errors (Shopify/Paymob) often contain useful JSON in error.response.data
         if (status) {
             console.error('Checkout upstream error:', status, data || error.message);
             return res.status(status).json({
@@ -375,7 +401,10 @@ app.post('/api/checkout/egypt', async (req, res) => {
         }
 
         console.error('Checkout error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 });
 
@@ -386,6 +415,7 @@ app.post('/api/paymob/callback', async (req, res) => {
     try {
         const data = req.body;
 
+        // Verify HMAC signature (Paymob sends HMAC as a query parameter)
         const hmacSecret = process.env.PAYMOB_HMAC;
         const crypto = require('crypto');
         const receivedHmac = req.query.hmac;
@@ -421,12 +451,16 @@ app.post('/api/paymob/callback', async (req, res) => {
             return res.status(400).json({ error: 'Invalid HMAC signature' });
         }
 
+        // Check payment success
         if (data.success === 'true' || data.success === true) {
             const shopifyDraftOrderId = data.order.merchant_order_id;
 
+            // Complete the Shopify draft order
             await axios.put(
                 `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders/${shopifyDraftOrderId}/complete.json`,
-                { payment_pending: false },
+                {
+                    payment_pending: false
+                },
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -1393,5 +1427,5 @@ app.get('/api/debug/env', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`\uD83D\uDE80 Server running on port ${PORT}`);
 });
