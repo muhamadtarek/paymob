@@ -575,10 +575,23 @@ function getCartPayloadCheckoutPageHtml(cart) {
       --radius: 3px;
     }
 
+    @font-face {
+        font-family: 'Futura PT';
+        font-style: normal;
+        font-weight: 400;
+        src: local('Futura PT'), url('https://fonts.cdnfonts.com/s/72205/FuturaCyrillicBook.woff') format('woff');
+    }
+    @font-face {
+        font-family: 'Futura PT';
+        font-style: normal;
+        font-weight: 300;
+        src: local('Futura PT'), url('https://fonts.cdnfonts.com/s/72205/FuturaCyrillicLight.woff') format('woff');
+    }
+
     html, body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Jost', sans-serif;
+      font-family: 'Futura PT', sans-serif;
       font-weight: 300;
       font-size: 14px;
       line-height: 1.6;
@@ -1065,22 +1078,15 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
 <!-- Header -->
 <header class="site-header">
-  <nav class="breadcrumb" aria-label="breadcrumb">
-    <a href="#">Cart</a>
-    <span class="sep">›</span>
-    <strong>Information</strong>
-    <span class="sep">›</span>
-    <span>Shipping</span>
-    <span class="sep">›</span>
-    <span>Payment</span>
-  </nav>
-  <a href="/" class="logo">Nazeerah</a>
+  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-white.svg?v=1732742745" alt="Nazeerah" class="logo">
   <div class="cart-icon" aria-label="cart">
+  <a href="nazeerah.com">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
       <line x1="3" y1="6" x2="21" y2="6"/>
       <path d="M16 10a4 4 0 01-8 0"/>
     </svg>
+    </a>
   </div>
 </header>
 
