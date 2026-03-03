@@ -1073,6 +1073,26 @@ function getCartPayloadCheckoutPageHtml(cart) {
       color: var(--muted);
     }
     .shipping-info-icon svg { width: 13px; height: 13px; }
+
+    .checkout-footer-links {
+      margin-top: 2rem;
+      padding-top: 1.2rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 18px;
+      font-size: 12px;
+    }
+
+    .checkout-footer-links a {
+      color: var(--muted);
+      text-decoration: underline;
+      transition: color 0.2s;
+    }
+
+    .checkout-footer-links a:hover {
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -1233,6 +1253,14 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
       <button type="submit" id="pay-btn" class="pay-btn">Pay now</button>
       <p id="error-msg" class="error-msg"></p>
+
+      <div class="checkout-footer-links">
+        <a href="/policies/refund-policy">Refund policy</a>
+        <a href="/policies/shipping-policy">Shipping</a>
+        <a href="/policies/privacy-policy">Privacy policy</a>
+        <a href="/policies/terms-of-service">Terms of service</a>
+        <a href="/pages/contact">Contact</a>
+      </div>
 
     </form>
   </div>
