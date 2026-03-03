@@ -1216,39 +1216,6 @@ app.get('/api/checkout/page', (req, res) => {
     res.type('html').send(getCartPayloadCheckoutPageHtml(cart));
 });
 
-app.get('/api/debug/env', (req, res) => {
-    const required = [
-        'SHOPIFY_STORE_DOMAIN', 'SHOPIFY_ADMIN_ACCESS_TOKEN',
-        'PAYMOB_API_KEY', 'PAYMOB_INTEGRATION_ID', 'PAYMOB_IFRAME_ID',
-        'PAYMOB_INTEGRATION_ID_CARD', 'PAYMOB_IFRAME_ID_CARD',
-        'PAYMOB_INTEGRATION_ID_WALLET', 'PAYMOB_IFRAME_ID_WALLET',
-        'PAYMOB_INTEGRATION_ID_KIOSK', 'PAYMOB_IFRAME_ID_KIOSK'
-    ];
-    const missing = getMissingEnv(required);
-    res.json({ ok: missing.length === 0, missing });
-});
-
-// GET /api/debug/klaviyo?email=test@example.com
-app.get('/api/debug/klaviyo', async (req, res) => {
-  const email = req.query.email || 'test@example.com';
-  const result = await klaviyoSubscribe({
-      email,
-      firstName: 'Test',
-      lastName: 'User',
-      newsletter: true
-  });
-  // Always return 200 so we can see the full response regardless of success/failure
-  res.json({
-      env: {
-          hasApiKey: !!process.env.KLAVIYO_API_KEY,
-          apiKeyPrefix: process.env.KLAVIYO_API_KEY
-              ? process.env.KLAVIYO_API_KEY.substring(0, 8) + '...'
-              : null,
-          listId: process.env.KLAVIYO_LIST_ID || null
-      },
-      result
-  });
-});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
