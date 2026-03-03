@@ -702,7 +702,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
       padding: 10px 12px;
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      background: var(--white);
+      background: #f5f3f0;
       color: var(--text);
       font-family: 'Jost', sans-serif;
       font-size: 13.5px;
@@ -712,7 +712,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
       appearance: none;
       -webkit-appearance: none;
     }
-    .field input::placeholder { color: #c0bab3; }
+    .field input::placeholder { color: #9b948c; }
     .field input:focus,
     .field select:focus { border-color: var(--border-focus); }
 
