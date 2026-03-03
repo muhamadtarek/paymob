@@ -1304,7 +1304,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
       + '</div>'
       + '<div class="total-line grand">'
       + '<span class="tl-label">Total</span>'
-      + '<span class="tl-value"><span class="currency-code">EGP</span>' + fmt(grand) + '</span>'
+      + '<span class="tl-value"> fmt(grand) + '</span>'
       + '</div>';
   }
 
