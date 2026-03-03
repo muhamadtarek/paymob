@@ -31,58 +31,94 @@ function getMissingEnv(keys) {
 
 /**
  * Subscribe a profile to a Klaviyo list.
- * Uses the Klaviyo v3 API (2023-12-15).
- * Always subscribes; consent = EMAIL only.
- * @param {object} opts - { email, firstName, lastName, newsletter }
+ * Two-step process required by the Klaviyo v3 API:
+ *   1. Upsert the profile (to persist first_name / last_name)
+ *   2. Subscribe the profile to the list via bulk-create-jobs
+ *
+ * Both calls are fire-and-forget — errors are logged but never block checkout.
  */
 async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
     const listId = process.env.KLAVIYO_LIST_ID;
     const apiKey = process.env.KLAVIYO_API_KEY;
 
     if (!listId || !apiKey) {
-        console.warn('Klaviyo env vars missing — skipping subscription');
+        console.warn('Klaviyo env vars missing (KLAVIYO_API_KEY / KLAVIYO_LIST_ID) — skipping');
         return;
     }
 
-    // Build profile payload
-    const profileData = {
-        type: 'profile',
-        attributes: {
-            email,
-            first_name: firstName || '',
-            last_name:  lastName  || '',
-            properties: {
-                newsletter_optin: !!newsletter  // tracks whether checkbox was ticked
-            },
-            subscriptions: {
-                email: {
-                    marketing: {
-                        consent: 'SUBSCRIBED'
+    const headers = {
+        'Authorization': `Klaviyo-API-Key ${apiKey}`,
+        'revision': '2024-02-15',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    };
+
+    // Step 1: Upsert the profile so first_name / last_name are stored.
+    // Uses the Create or Update Profile endpoint (PATCH /api/profiles/).
+    await axios.post(
+        'https://a.klaviyo.com/api/profiles/',
+        {
+            data: {
+                type: 'profile',
+                attributes: {
+                    email,
+                    first_name: firstName || '',
+                    last_name:  lastName  || '',
+                    properties: {
+                        newsletter_optin: !!newsletter
                     }
                 }
             }
-        }
-    };
-
-    // POST to /api/lists/{id}/relationships/profiles/ to add + subscribe in one call
-    await axios.post(
-        `https://a.klaviyo.com/api/lists/${listId}/relationships/profiles/`,
-        {
-            data: [
-                {
-                    type: 'profile',
-                    attributes: profileData.attributes
-                }
-            ]
         },
-        {
-            headers: {
-                'Authorization': `Klaviyo-API-Key ${apiKey}`,
-                'revision': '2023-12-15',
-                'Content-Type': 'application/json'
-            }
+        { headers }
+    ).catch(err => {
+        // 409 Conflict = profile already exists — safe to ignore, subscription still proceeds
+        if (err?.response?.status !== 409) {
+            console.error('Klaviyo upsert profile error:', err?.response?.data || err.message);
         }
+    });
+
+    // Step 2: Subscribe the profile to the list.
+    // POST /api/profile-subscription-bulk-create-jobs/
+    await axios.post(
+        'https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/',
+        {
+            data: {
+                type: 'profile-subscription-bulk-create-job',
+                attributes: {
+                    custom_source: 'Nazeerah Checkout',
+                    profiles: {
+                        data: [
+                            {
+                                type: 'profile',
+                                attributes: {
+                                    email,
+                                    subscriptions: {
+                                        email: {
+                                            marketing: {
+                                                consent: 'SUBSCRIBED'
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                relationships: {
+                    list: {
+                        data: {
+                            type: 'list',
+                            id: listId
+                        }
+                    }
+                }
+            }
+        },
+        { headers }
     );
+
+    console.log(`✉️  Klaviyo: subscribed ${email} to list ${listId}`);
 }
 
 // ==================== SHOPIFY FUNCTIONS ====================
