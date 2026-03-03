@@ -557,7 +557,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
   <title>Checkout — Nazeerah</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.cdnfonts.com/css/futura-pt" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -576,16 +575,18 @@ function getCartPayloadCheckoutPageHtml(cart) {
     }
 
     @font-face {
-        font-family: 'Futura PT';
-        font-style: normal;
-        font-weight: 400;
-        src: local('Futura PT'), url('https://fonts.cdnfonts.com/s/72205/FuturaCyrillicBook.woff') format('woff');
+      font-family: 'Futura PT';
+      src: url('/fonts/FuturaCyrillicBook.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
     }
     @font-face {
-        font-family: 'Futura PT';
-        font-style: normal;
-        font-weight: 300;
-        src: local('Futura PT'), url('https://fonts.cdnfonts.com/s/72205/FuturaCyrillicLight.woff') format('woff');
+      font-family: 'Futura PT';
+      src: url('/fonts/FuturaCyrillicLight.woff2') format('woff2');
+      font-weight: 300;
+      font-style: normal;
+      font-display: swap;
     }
 
     html, body {
@@ -908,7 +909,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
       color: #fff;
       border: none;
       border-radius: var(--radius);
-      font-family: 'Jost', sans-serif;
+      font-family: 'Futura PT', sans-serif;
       font-size: 13px;
       font-weight: 400;
       letter-spacing: 0.12em;
@@ -1078,7 +1079,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
 <!-- Header -->
 <header class="site-header">
-  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-white.svg?v=1732742745" alt="Nazeerah" class="logo">
+  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" alt="Nazeerah" class="logo">
   <div class="cart-icon" aria-label="cart">
   <a href="nazeerah.com">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
