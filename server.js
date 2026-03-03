@@ -1278,7 +1278,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
         + '</div>'
         + '<div class="item-info">'
         +   '<div class="item-name">' + (item.name || 'Item') + '</div>'
-        +   (item.category ? '<div class="item-variant">' + item.category + '</div>' : '')
+        +    ''
         + '</div>'
         + '<div class="item-price">' + fmt((item.price || 0) * (item.quantity || 1)) + '</div>'
         + '</div>';
