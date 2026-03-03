@@ -1079,7 +1079,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
 <!-- Header -->
 <header class="site-header">
-  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" alt="Nazeerah" width="50" height="50" class="logo">
+  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" alt="Nazeerah" width="150" height="150" class="logo">
   <div class="cart-icon" aria-label="cart">
   <a href="https://nazeerah.com">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
