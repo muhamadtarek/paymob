@@ -1217,5 +1217,25 @@ app.get('/api/debug/env', (req, res) => {
     res.json({ ok: missing.length === 0, missing });
 });
 
+// GET /api/debug/klaviyo?email=test@example.com
+app.get('/api/debug/klaviyo', async (req, res) => {
+  const email = req.query.email || 'test@example.com';
+  try {
+      const result = await klaviyoSubscribe({
+          email,
+          firstName: 'Test',
+          lastName: 'User',
+          newsletter: true
+      });
+      res.json({ success: true, result });
+  } catch (err) {
+      res.status(500).json({
+          success: false,
+          error: err.message,
+          details: err?.response?.data || null
+      });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
