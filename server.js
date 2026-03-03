@@ -38,89 +38,100 @@ function getMissingEnv(keys) {
  * Both calls are fire-and-forget — errors are logged but never block checkout.
  */
 async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
-    const listId = process.env.KLAVIYO_LIST_ID;
-    const apiKey = process.env.KLAVIYO_API_KEY;
+  const listId = process.env.KLAVIYO_LIST_ID;
+  const apiKey = process.env.KLAVIYO_API_KEY;
 
-    if (!listId || !apiKey) {
-        console.warn('Klaviyo env vars missing (KLAVIYO_API_KEY / KLAVIYO_LIST_ID) — skipping');
-        return;
-    }
+  if (!listId || !apiKey) {
+      return { skipped: true, reason: 'Missing KLAVIYO_API_KEY or KLAVIYO_LIST_ID' };
+  }
 
-    const headers = {
-        'Authorization': `Klaviyo-API-Key ${apiKey}`,
-        'revision': '2024-02-15',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    };
+  const headers = {
+      'Authorization': `Klaviyo-API-Key ${apiKey}`,
+      'revision': '2024-02-15',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+  };
 
-    // Step 1: Upsert the profile so first_name / last_name are stored.
-    // Uses the Create or Update Profile endpoint (PATCH /api/profiles/).
-    await axios.post(
-        'https://a.klaviyo.com/api/profiles/',
-        {
-            data: {
-                type: 'profile',
-                attributes: {
-                    email,
-                    first_name: firstName || '',
-                    last_name:  lastName  || '',
-                    properties: {
-                        newsletter_optin: !!newsletter
-                    }
-                }
-            }
-        },
-        { headers }
-    ).catch(err => {
-        // 409 Conflict = profile already exists — safe to ignore, subscription still proceeds
-        if (err?.response?.status !== 409) {
-            console.error('Klaviyo upsert profile error:', err?.response?.data || err.message);
-        }
-    });
+  let profileResult = null;
 
-    // Step 2: Subscribe the profile to the list.
-    // POST /api/profile-subscription-bulk-create-jobs/
-    await axios.post(
-        'https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/',
-        {
-            data: {
-                type: 'profile-subscription-bulk-create-job',
-                attributes: {
-                    custom_source: 'Nazeerah Checkout',
-                    profiles: {
-                        data: [
-                            {
-                                type: 'profile',
-                                attributes: {
-                                    email,
-                                    subscriptions: {
-                                        email: {
-                                            marketing: {
-                                                consent: 'SUBSCRIBED'
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        ]
-                    }
-                },
-                relationships: {
-                    list: {
-                        data: {
-                            type: 'list',
-                            id: listId
-                        }
-                    }
-                }
-            }
-        },
-        { headers }
-    );
+  // Step 1: Upsert profile
+  try {
+      const r = await axios.post(
+          'https://a.klaviyo.com/api/profiles/',
+          {
+              data: {
+                  type: 'profile',
+                  attributes: {
+                      email,
+                      first_name: firstName || '',
+                      last_name:  lastName  || '',
+                      properties: { newsletter_optin: !!newsletter }
+                  }
+              }
+          },
+          { headers }
+      );
+      profileResult = { status: r.status, data: r.data };
+  } catch (err) {
+      if (err?.response?.status === 409) {
+          profileResult = { status: 409, note: 'Profile already exists' };
+      } else {
+          return {
+              step: 'upsert_profile',
+              error: err.message,
+              status: err?.response?.status,
+              details: err?.response?.data
+          };
+      }
+  }
 
-    console.log(`✉️  Klaviyo: subscribed ${email} to list ${listId}`);
+  // Step 2: Subscribe to list
+  try {
+      const r = await axios.post(
+          'https://a.klaviyo.com/api/profile-subscription-bulk-create-jobs/',
+          {
+              data: {
+                  type: 'profile-subscription-bulk-create-job',
+                  attributes: {
+                      custom_source: 'Nazeerah Checkout',
+                      profiles: {
+                          data: [
+                              {
+                                  type: 'profile',
+                                  attributes: {
+                                      email,
+                                      subscriptions: {
+                                          email: {
+                                              marketing: { consent: 'SUBSCRIBED' }
+                                          }
+                                      }
+                                  }
+                              }
+                          ]
+                      }
+                  },
+                  relationships: {
+                      list: {
+                          data: { type: 'list', id: listId }
+                      }
+                  }
+              }
+          },
+          { headers }
+      );
+      return {
+          profileResult,
+          subscribeResult: { status: r.status, data: r.data }
+      };
+  } catch (err) {
+      return {
+          step: 'subscribe',
+          error: err.message,
+          status: err?.response?.status,
+          details: err?.response?.data
+      };
+  }
 }
-
 // ==================== SHOPIFY FUNCTIONS ====================
 
 /**
@@ -1220,21 +1231,23 @@ app.get('/api/debug/env', (req, res) => {
 // GET /api/debug/klaviyo?email=test@example.com
 app.get('/api/debug/klaviyo', async (req, res) => {
   const email = req.query.email || 'test@example.com';
-  try {
-      const result = await klaviyoSubscribe({
-          email,
-          firstName: 'Test',
-          lastName: 'User',
-          newsletter: true
-      });
-      res.json({ success: true, result });
-  } catch (err) {
-      res.status(500).json({
-          success: false,
-          error: err.message,
-          details: err?.response?.data || null
-      });
-  }
+  const result = await klaviyoSubscribe({
+      email,
+      firstName: 'Test',
+      lastName: 'User',
+      newsletter: true
+  });
+  // Always return 200 so we can see the full response regardless of success/failure
+  res.json({
+      env: {
+          hasApiKey: !!process.env.KLAVIYO_API_KEY,
+          apiKeyPrefix: process.env.KLAVIYO_API_KEY
+              ? process.env.KLAVIYO_API_KEY.substring(0, 8) + '...'
+              : null,
+          listId: process.env.KLAVIYO_LIST_ID || null
+      },
+      result
+  });
 });
 
 const PORT = process.env.PORT || 3000;
