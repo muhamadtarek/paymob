@@ -1079,9 +1079,9 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
 <!-- Header -->
 <header class="site-header">
-  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" alt="Nazeerah" class="logo">
+  <img src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" alt="Nazeerah" width="50" height="50" class="logo">
   <div class="cart-icon" aria-label="cart">
-  <a href="nazeerah.com">
+  <a href="https://nazeerah.com">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
       <line x1="3" y1="6" x2="21" y2="6"/>
@@ -1209,7 +1209,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
             <span class="badge badge-visa">VISA</span>
             <span class="badge badge-mc">MC</span>
             <span class="badge badge-amex">AMEX</span>
-            <span class="badge badge-more">+5</span>
           </div>
         </div>
       </div>
@@ -1279,7 +1278,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
         + '</div>'
         + '<div class="item-info">'
         +   '<div class="item-name">' + (item.name || 'Item') + '</div>'
-        +   (item.category ? '<div class="item-variant">' + item.category + '</div>' : '')
         + '</div>'
         + '<div class="item-price">' + fmt((item.price || 0) * (item.quantity || 1)) + '</div>'
         + '</div>';
