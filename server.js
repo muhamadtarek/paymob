@@ -567,8 +567,8 @@ function getCartPayloadCheckoutPageHtml(cart) {
       --border-focus: #b5a898;
       --text: #1a1a1a;
       --muted: #888077;
-      --gold: #9a8660;
-      --gold-hover: #7d6d4e;
+      --gold: #BEA64D;
+      --gold-hover: #BEA64D;
       --label: #6b6258;
       --error: #b03a2e;
       --radius: 3px;
@@ -1189,7 +1189,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
       <div class="shipping-box">
         <div class="shipping-box-left">
           <div class="shipping-name">Standard Shipping</div>
-          <div class="shipping-desc">2 to 5 business days</div>
+          <div class="shipping-desc">2 to 8 business days</div>
         </div>
         <div class="shipping-price">100 EGP</div>
       </div>
