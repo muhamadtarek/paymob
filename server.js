@@ -27,6 +27,64 @@ function getMissingEnv(keys) {
     return keys.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
 }
 
+// ==================== KLAVIYO FUNCTIONS ====================
+
+/**
+ * Subscribe a profile to a Klaviyo list.
+ * Uses the Klaviyo v3 API (2023-12-15).
+ * Always subscribes; consent = EMAIL only.
+ * @param {object} opts - { email, firstName, lastName, newsletter }
+ */
+async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
+    const listId = process.env.KLAVIYO_LIST_ID;
+    const apiKey = process.env.KLAVIYO_API_KEY;
+
+    if (!listId || !apiKey) {
+        console.warn('Klaviyo env vars missing — skipping subscription');
+        return;
+    }
+
+    // Build profile payload
+    const profileData = {
+        type: 'profile',
+        attributes: {
+            email,
+            first_name: firstName || '',
+            last_name:  lastName  || '',
+            properties: {
+                newsletter_optin: !!newsletter  // tracks whether checkbox was ticked
+            },
+            subscriptions: {
+                email: {
+                    marketing: {
+                        consent: 'SUBSCRIBED'
+                    }
+                }
+            }
+        }
+    };
+
+    // POST to /api/lists/{id}/relationships/profiles/ to add + subscribe in one call
+    await axios.post(
+        `https://a.klaviyo.com/api/lists/${listId}/relationships/profiles/`,
+        {
+            data: [
+                {
+                    type: 'profile',
+                    attributes: profileData.attributes
+                }
+            ]
+        },
+        {
+            headers: {
+                'Authorization': `Klaviyo-API-Key ${apiKey}`,
+                'revision': '2023-12-15',
+                'Content-Type': 'application/json'
+            }
+        }
+    );
+}
+
 // ==================== SHOPIFY FUNCTIONS ====================
 
 /**
@@ -344,6 +402,14 @@ app.post('/api/checkout/egypt', async (req, res) => {
 
         const draftOrder = await createDraftOrder(cartItems, customer, totalAmount, appliedDiscount || null);
 
+        // Subscribe to Klaviyo — fire-and-forget (never blocks checkout)
+        klaviyoSubscribe({
+            email:     customer.email,
+            firstName: customer.firstName || customer.first_name,
+            lastName:  customer.lastName  || customer.last_name,
+            newsletter: req.body.newsletter  // true | false from frontend checkbox
+        }).catch(err => console.error('Klaviyo subscribe error:', err?.response?.data || err.message));
+
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
             const codRedirectUrl =
                 process.env.COD_SUCCESS_URL ||
@@ -570,11 +636,11 @@ function getCartPayloadCheckoutPageHtml(cart) {
     .field label { display: block; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--label); margin-bottom: 5px; }
     .field input, .field select {
       width: 100%; padding: 10px 12px; border: 1px solid var(--border);
-      border-radius: var(--radius); background: #f5f3f0; /* light gray box */; color: var(--text);
+      border-radius: var(--radius); background: var(--white); color: var(--text);
       font-family: 'Jost', sans-serif; font-size: 13.5px; font-weight: 300;
       transition: border-color 0.2s; outline: none; appearance: none; -webkit-appearance: none;
     }
-    .field input::placeholder { color: #9b948c; }
+    .field input::placeholder { color: #c0bab3; }
     .field input:focus, .field select:focus { border-color: var(--border-focus); }
     .field .input-wrap { position: relative; }
     .field .input-icon { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; display: flex; }
@@ -703,27 +769,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
     .total-line.grand .tl-label { font-size: 15px; font-weight: 500; color: var(--text); }
     .total-line.grand .tl-value { font-size: 18px; font-weight: 500; }
     .total-line.grand .currency-code { font-size: 11px; font-weight: 300; color: var(--muted); margin-right: 4px; letter-spacing: 0.05em; }
-
-    .checkout-footer-links {
-    margin-top: 2rem;
-    padding-top: 1.2rem;
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 18px;
-    font-size: 12px;
-  }
-
-  .checkout-footer-links a {
-    color: var(--muted);
-    text-decoration: underline;
-    transition: color 0.2s;
-  }
-
-  .checkout-footer-links a:hover {
-    color: var(--text);
-  }
-
   </style>
 </head>
 <body>
@@ -840,14 +885,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
       <button type="submit" id="pay-btn" class="pay-btn">Pay now</button>
       <p id="error-msg" class="error-msg"></p>
-
-      <div class="checkout-footer-links">
-        <a href="/policies/refund-policy">Refund policy</a>
-        <a href="/policies/shipping-policy">Shipping</a>
-        <a href="/policies/privacy-policy">Privacy policy</a>
-        <a href="/policies/terms-of-service">Terms of service</a>
-        <a href="/pages/contact">Contact</a>
-      </div>
 
     </form>
   </div>
@@ -1069,7 +1106,8 @@ function getCartPayloadCheckoutPageHtml(cart) {
       var body = {
         cartItems, customer, billingData,
         paymobMethod: fd.get('paymob_method'),
-        appliedDiscount: appliedDiscount || null  // ← discount travels with the order
+        newsletter:   fd.get('newsletter') === 'on',  // ← forward checkbox state
+        appliedDiscount: appliedDiscount || null
       };
 
       var res  = await fetch('/api/checkout/egypt', {
