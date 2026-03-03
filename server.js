@@ -1299,13 +1299,13 @@ function getCartPayloadCheckoutPageHtml(cart) {
       + '</div>'
       + '<div class="total-line">'
       + '<span class="tl-label">Shipping'
-      + '<span class="shipping-info-icon"></span>'
+      + '<span class="shipping-info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg></span>'
       + '</span>'
       + '<span class="tl-value">100 EGP</span>'
       + '</div>'
       + '<div class="total-line grand">'
       + '<span class="tl-label">Total</span>'
-      + '<span class="tl-value"> fmt(grand) + '</span>'
+      + '<span class="tl-value"><span class="currency-code"></span>' + fmt(grand) + '</span>'
       + '</div>';
   }
 
