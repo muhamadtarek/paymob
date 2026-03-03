@@ -561,7 +561,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #faf9f7;
+      --bg: #ffffff;
       --white: #ffffff;
       --border: #e8e4df;
       --border-focus: #b5a898;
