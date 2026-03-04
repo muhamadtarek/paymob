@@ -956,10 +956,10 @@ function getCartPayloadCheckoutPageHtml(cart) {
       <p id="error-msg" class="error-msg"></p>
 
       <div class="checkout-footer-links">
-        <a href="/policies/refund-policy">Refund policy</a>
-        <a href="/policies/shipping-policy">Shipping</a>
-        <a href="/policies/privacy-policy">Privacy policy</a>
-        <a href="/policies/terms-of-service">Terms of service</a>
+        <a href="https://nazeerah.com/en-eg/pages/return-policy">Refund policy</a>
+        <a href="https://nazeerah.com/en-eg/pages/shipping-policy">Shipping</a>
+        <a href="https://nazeerah.com/en-eg/policies/privacy-policy">Privacy policy</a>
+        <a href="https://nazeerah.com/en-eg/policies/terms-of-service">Terms of service</a>
         <a href="/pages/contact">Contact</a>
       </div>
 
