@@ -600,6 +600,8 @@ function getCartPayloadCheckoutPageHtml(cart) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Checkout — Nazeerah</title>
+  <link rel="icon" type="image/png" href="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/Naz_logo_emblem.png?v=1712855831" />
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
