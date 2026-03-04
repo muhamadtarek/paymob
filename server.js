@@ -960,7 +960,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
         <a href="https://nazeerah.com/en-eg/pages/shipping-policy">Shipping</a>
         <a href="https://nazeerah.com/en-eg/policies/privacy-policy">Privacy policy</a>
         <a href="https://nazeerah.com/en-eg/policies/terms-of-service">Terms of service</a>
-        <a href="/pages/contact">Contact</a>
+        <a href="https://nazeerah.com/en-eg/pages/contact">Contact</a>
       </div>
 
     </form>
