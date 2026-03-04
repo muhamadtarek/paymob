@@ -600,8 +600,6 @@ function getCartPayloadCheckoutPageHtml(cart) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Checkout — Nazeerah</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -673,7 +671,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
     /* ── Section headings ── */
     .section-title {
-      font-family: 'Jost', sans-serif; font-size: 13px; font-weight: 500;
+      font-family: 'Futura PT', sans-serif; font-size: 13px; font-weight: 500;
       letter-spacing: 0.08em; text-transform: uppercase; color: var(--text);
       margin-bottom: 1.1rem; margin-top: 2rem;
     }
@@ -687,7 +685,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
     .field input, .field select {
       width: 100%; padding: 10px 12px; border: 1px solid var(--border);
       border-radius: var(--radius); background: #f5f3f0; color: var(--text);
-      font-family: 'Jost', sans-serif; font-size: 13.5px; font-weight: 300;
+      font-family: 'Futura PT', sans-serif; font-size: 13.5px; font-weight: 300;
       transition: border-color 0.2s; outline: none; appearance: none; -webkit-appearance: none;
     }
     .field input::placeholder { color: #9b948c; }
@@ -698,7 +696,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
     .select-country { border: 1px solid var(--border); border-radius: var(--radius); background: var(--white); padding: 6px 12px 8px; }
     .select-country .country-label { font-size: 10px; color: var(--muted); letter-spacing: 0.04em; display: block; margin-bottom: 2px; }
-    .select-country .country-value { font-size: 13.5px; font-family: 'Jost', sans-serif; font-weight: 300; color: var(--text); display: flex; align-items: center; justify-content: space-between; }
+    .select-country .country-value { font-size: 13.5px; font-family: 'Futura PT', sans-serif; font-weight: 300; color: var(--text); display: flex; align-items: center; justify-content: space-between; }
 
     .checkbox-field { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; cursor: pointer; font-size: 13px; color: var(--text); }
     .checkbox-field input[type="checkbox"] { width: 14px; height: 14px; flex-shrink: 0; accent-color: var(--gold); cursor: pointer; }
@@ -758,7 +756,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
     .discount-row { display: flex; gap: 8px; margin-bottom: 6px; }
     .discount-row input {
       flex: 1; padding: 9px 12px; border: 1px solid var(--border);
-      border-radius: var(--radius); font-family: 'Jost', sans-serif;
+      border-radius: var(--radius); font-family: 'Futura PT', sans-serif;
       font-size: 13px; font-weight: 300; outline: none;
       background: var(--white); color: var(--text);
       transition: border-color 0.2s;
@@ -768,7 +766,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
     .discount-row input:focus { border-color: var(--border-focus); }
     .discount-row button {
       padding: 9px 16px; border: 1px solid var(--border); border-radius: var(--radius);
-      background: var(--white); font-family: 'Jost', sans-serif; font-size: 12.5px;
+      background: var(--white); font-family: 'Futura PT', sans-serif; font-size: 12.5px;
       letter-spacing: 0.04em; cursor: pointer; color: var(--text); white-space: nowrap;
       transition: border-color 0.2s, background 0.2s, opacity 0.2s;
     }
