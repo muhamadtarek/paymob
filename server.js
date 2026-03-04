@@ -623,12 +623,12 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
     @font-face {
       font-family: 'Futura PT';
-      src: url('/fonts/FuturaCyrillicBook.woff2') format('woff2');
+      src: url('https://cdn.shopify.com/s/files/1/0691/2930/6408/files/FuturaCyrillicBook.woff?v=1772642061') format('woff2');
       font-weight: 400; font-style: normal; font-display: swap;
     }
     @font-face {
       font-family: 'Futura PT';
-      src: url('/fonts/FuturaCyrillicLight.woff2') format('woff2');
+      src: url('https://cdn.shopify.com/s/files/1/0691/2930/6408/files/FuturaCyrillicLight.woff?v=1772642061') format('woff2');
       font-weight: 300; font-style: normal; font-display: swap;
     }
 
