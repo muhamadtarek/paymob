@@ -1247,7 +1247,7 @@ app.get('/api/checkout/page', (req, res) => {
     checkoutSessions.delete(token); // one-time use
     res.type('html').send(getCartPayloadCheckoutPageHtml(cart));
 });
-app.get('/popup', (req, res) => {
+app.get('/signup-egypt', (req, res) => {
   res.type('html').send(`<!DOCTYPE html>
 <html lang="en">
 <head>
