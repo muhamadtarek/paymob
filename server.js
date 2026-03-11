@@ -1295,8 +1295,7 @@ app.get('/signup', (req, res) => {
     <div class="klaviyo-form-X3kaev"></div>
   </div>
 
-  <!-- Klaviyo embed script -->
-  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
+
 
 </body>
 </html>`);
