@@ -1327,7 +1327,10 @@ app.get('/popup', (req, res) => {
   </div>
 
   <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
-
+  <script>
+    window._klOnsite = window._klOnsite || [];
+    window._klOnsite.push(['openForm', 'DISABLE_POPUPS']);
+  </script>
 </body>
 </html>`);
 });
@@ -1411,6 +1414,10 @@ app.get('/signup', (req, res) => {
   </div>
 
   <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
+  <script>
+    window._klOnsite = window._klOnsite || [];
+    window._klOnsite.push(['openForm', 'DISABLE_POPUPS']);
+  </script>
 
 </body>
 </html>`);
