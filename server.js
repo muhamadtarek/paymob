@@ -1313,7 +1313,6 @@ app.get('/signup-egypt', (req, res) => {
       text-align: center;
       line-height: 1.7;
       max-width: 360px;
-      margin-bottom: 2.5rem;
     }
     .form-wrap {
       width: 100%;
@@ -1403,6 +1402,7 @@ app.get('/signup', (req, res) => {
       color: #1a1a1a;
       text-align: center;
       margin-bottom: 1rem;
+
     }
     .subheading {
       font-family: 'Futura PT', 'Jost', sans-serif;
@@ -1413,7 +1413,6 @@ app.get('/signup', (req, res) => {
       text-align: center;
       line-height: 1.7;
       max-width: 360px;
-      margin-bottom: 2.5rem;
     }
     .form-wrap {
       width: 100%;
