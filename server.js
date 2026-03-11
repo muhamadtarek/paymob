@@ -1248,7 +1248,7 @@ app.get('/api/checkout/page', (req, res) => {
     res.type('html').send(getCartPayloadCheckoutPageHtml(cart));
 });
 
-app.get('/signup', (req, res) => {
+app.get('/popup', (req, res) => {
   res.type('html').send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1331,6 +1331,91 @@ app.get('/signup', (req, res) => {
 </body>
 </html>`);
 });
+
+app.get('/signup', (req, res) => {
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up — Nazeerah</title>
+  <link rel="icon" type="image/png" href="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/Naz_logo_emblem.png?v=1712855831" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    @font-face {
+      font-family: 'Futura PT';
+      src: url('https://cdn.shopify.com/s/files/1/0691/2930/6408/files/FuturaCyrillicBook.woff?v=1772642061') format('woff');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Futura PT';
+      src: url('https://cdn.shopify.com/s/files/1/0691/2930/6408/files/FuturaCyrillicLight.woff?v=1772642061') format('woff');
+      font-weight: 300;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    body {
+      font-family: 'Futura PT', 'Jost', sans-serif;
+      background: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .logo-wrap {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    .logo-wrap img {
+      width: 180px;
+      height: auto;
+    }
+    .heading {
+      font-family: 'Futura PT', 'Jost', sans-serif;
+      font-weight: 300;
+      font-size: 22px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #1a1a1a;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .form-wrap {
+      width: 100%;
+      max-width: 480px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo-wrap">
+    <img 
+      src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" 
+      alt="Nazeerah" 
+    />
+  </div>
+
+  <h1 class="heading">Join Our World</h1>
+
+  <div class="form-wrap">
+    <div class="klaviyo-form-TfGCcx"></div>
+  </div>
+
+  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
+
+</body>
+</html>`);
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
