@@ -1247,7 +1247,6 @@ app.get('/api/checkout/page', (req, res) => {
     checkoutSessions.delete(token); // one-time use
     res.type('html').send(getCartPayloadCheckoutPageHtml(cart));
 });
-
 app.get('/popup', (req, res) => {
   res.type('html').send(`<!DOCTYPE html>
 <html lang="en">
@@ -1288,7 +1287,7 @@ app.get('/popup', (req, res) => {
       padding: 2rem;
     }
     .logo-wrap {
-      margin-bottom: 2rem;
+      margin-bottom: 2.5rem;
       text-align: center;
     }
     .logo-wrap img {
@@ -1297,13 +1296,24 @@ app.get('/popup', (req, res) => {
     }
     .heading {
       font-family: 'Futura PT', 'Jost', sans-serif;
-      font-weight: 300;
-      font-size: 22px;
-      letter-spacing: 0.2em;
+      font-weight: 400;
+      font-size: 18px;
+      letter-spacing: 0.25em;
       text-transform: uppercase;
       color: #1a1a1a;
       text-align: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
+    }
+    .subheading {
+      font-family: 'Futura PT', 'Jost', sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      color: #6b6258;
+      text-align: center;
+      line-height: 1.7;
+      max-width: 360px;
+      margin-bottom: 2.5rem;
     }
     .form-wrap {
       width: 100%;
@@ -1314,23 +1324,25 @@ app.get('/popup', (req, res) => {
 <body>
 
   <div class="logo-wrap">
-    <img 
-      src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" 
-      alt="Nazeerah" 
+    <img
+      src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680"
+      alt="Nazeerah"
     />
   </div>
 
-  <h1 class="heading">Join Our World</h1>
+  <h1 class="heading">Welcome to Nazeerah</h1>
+  <p class="subheading">Join our inner circle for private invitations, founder letters, and exclusive offers.</p>
 
   <div class="form-wrap">
     <div class="klaviyo-form-X3kaev"></div>
   </div>
 
-  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
   <script>
     window._klOnsite = window._klOnsite || [];
     window._klOnsite.push(['openForm', 'DISABLE_POPUPS']);
   </script>
+  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
+
 </body>
 </html>`);
 });
@@ -1375,7 +1387,7 @@ app.get('/signup', (req, res) => {
       padding: 2rem;
     }
     .logo-wrap {
-      margin-bottom: 2rem;
+      margin-bottom: 2.5rem;
       text-align: center;
     }
     .logo-wrap img {
@@ -1384,13 +1396,24 @@ app.get('/signup', (req, res) => {
     }
     .heading {
       font-family: 'Futura PT', 'Jost', sans-serif;
-      font-weight: 300;
-      font-size: 22px;
-      letter-spacing: 0.2em;
+      font-weight: 400;
+      font-size: 18px;
+      letter-spacing: 0.25em;
       text-transform: uppercase;
       color: #1a1a1a;
       text-align: center;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
+    }
+    .subheading {
+      font-family: 'Futura PT', 'Jost', sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      color: #6b6258;
+      text-align: center;
+      line-height: 1.7;
+      max-width: 360px;
+      margin-bottom: 2.5rem;
     }
     .form-wrap {
       width: 100%;
@@ -1401,23 +1424,24 @@ app.get('/signup', (req, res) => {
 <body>
 
   <div class="logo-wrap">
-    <img 
-      src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" 
-      alt="Nazeerah" 
+    <img
+      src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680"
+      alt="Nazeerah"
     />
   </div>
 
-  <h1 class="heading">Join Our World</h1>
+  <h1 class="heading">Welcome to Nazeerah</h1>
+  <p class="subheading">Join our inner circle for private invitations, founder letters, and exclusive offers.</p>
 
   <div class="form-wrap">
     <div class="klaviyo-form-TfGCcx"></div>
   </div>
 
-  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
   <script>
     window._klOnsite = window._klOnsite || [];
     window._klOnsite.push(['openForm', 'DISABLE_POPUPS']);
   </script>
+  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
 
 </body>
 </html>`);
