@@ -1248,6 +1248,59 @@ app.get('/api/checkout/page', (req, res) => {
     res.type('html').send(getCartPayloadCheckoutPageHtml(cart));
 });
 
+app.get('/signup', (req, res) => {
+  res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up — Nazeerah</title>
+  <link rel="icon" type="image/png" href="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/Naz_logo_emblem.png?v=1712855831" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Futura PT', sans-serif;
+      background: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .logo-wrap {
+      margin-bottom: 2.5rem;
+      text-align: center;
+    }
+    .logo-wrap img {
+      width: 180px;
+      height: auto;
+    }
+    .form-wrap {
+      width: 100%;
+      max-width: 480px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo-wrap">
+    <img 
+      src="https://cdn.shopify.com/s/files/1/0691/2930/6408/files/nazeerah-logo-black.svg?v=1732712680" 
+      alt="Nazeerah" 
+    />
+  </div>
+
+  <div class="form-wrap">
+    <div class="klaviyo-form-X3kaev"></div>
+  </div>
+
+  <!-- Klaviyo embed script -->
+  <script async type="text/javascript" src="https://static.klaviyo.com/onsite/js/klaviyo.js?company_id=TUQk9P"></script>
+
+</body>
+</html>`);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
