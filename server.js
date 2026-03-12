@@ -924,30 +924,8 @@ function getCartPayloadCheckoutPageHtml(cart) {
       <div class="section-title">Payment</div>
       <p class="payment-subtitle">All transactions are secure and encrypted.</p>
 
-      <div class="payment-option selected" id="opt-card">
-        <div class="payment-option-header">
-          <label>
-            <input type="radio" name="paymob_method" value="card" checked onchange="onPaymentChange(this)" />
-            Credit card
-          </label>
-          <div class="payment-badges">
-            <span class="badge badge-visa">VISA</span>
-            <span class="badge badge-mc">MC</span>
-            <span class="badge badge-amex">AMEX</span>
-          </div>
-        </div>
-      </div>
 
-      <div class="payment-option" id="opt-wallet">
-        <div class="payment-option-header">
-          <label>
-            <input type="radio" name="paymob_method" value="wallet" onchange="onPaymentChange(this)" />
-            Mobile wallet
-          </label>
-        </div>
-      </div>
-
-      <div class="cod-option" id="opt-cod">
+      <div class="cod-option selected" id="opt-cod">
         <label>
           <input type="radio" name="paymob_method" value="cod" onchange="onPaymentChange(this)" />
           Cash on Delivery
