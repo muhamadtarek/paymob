@@ -927,7 +927,7 @@ function getCartPayloadCheckoutPageHtml(cart) {
 
       <div class="cod-option selected" id="opt-cod">
         <label>
-          <input type="radio" name="paymob_method" value="cod" onchange="onPaymentChange(this)" />
+          <input type="radio" name="paymob_method" value="cod" checked onchange="onPaymentChange(this)" />
           Cash on Delivery
         </label>
       </div>
