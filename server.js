@@ -1307,9 +1307,9 @@ app.get('/signup-egypt', (req, res) => {
     .subheading {
       font-family: 'Futura PT', 'Jost', sans-serif;
       font-weight: 300;
-      font-size: 14px;
+      font-size: 18px;
       letter-spacing: 0.04em;
-      color: #6b6258;
+      color: #000000;
       text-align: center;
       line-height: 1.7;
       max-width: 360px;
@@ -1329,7 +1329,7 @@ app.get('/signup-egypt', (req, res) => {
     />
   </div>
 
-  <h1 class="heading">Welcome to Nazeerah</h1>
+  <h1 class="heading">Welcome</h1>
   <p class="subheading">Join our inner circle for private invitations, founder letters, and exclusive offers.</p>
 
   <div class="form-wrap">
@@ -1407,9 +1407,9 @@ app.get('/signup', (req, res) => {
     .subheading {
       font-family: 'Futura PT', 'Jost', sans-serif;
       font-weight: 300;
-      font-size: 14px;
+      font-size: 18px;
       letter-spacing: 0.04em;
-      color: #6b6258;
+      color: #000000;
       text-align: center;
       line-height: 1.7;
       max-width: 360px;
@@ -1429,7 +1429,7 @@ app.get('/signup', (req, res) => {
     />
   </div>
 
-  <h1 class="heading">Welcome to Nazeerah</h1>
+  <h1 class="heading">Welcome</h1>
   <p class="subheading">Join our inner circle for private invitations, founder letters, and exclusive offers.</p>
 
   <div class="form-wrap">
