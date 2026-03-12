@@ -1291,7 +1291,7 @@ app.get('/signup-egypt', (req, res) => {
       text-align: center;
     }
     .logo-wrap img {
-      width: 180px;
+      width: 250px;
       height: auto;
     }
     .heading {
@@ -1390,7 +1390,7 @@ app.get('/signup', (req, res) => {
       text-align: center;
     }
     .logo-wrap img {
-      width: 180px;
+      width: 250px;
       height: auto;
     }
     .heading {
