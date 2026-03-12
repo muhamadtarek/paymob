@@ -1329,9 +1329,6 @@ app.get('/signup-egypt', (req, res) => {
     />
   </div>
 
-  <h1 class="heading">Welcome</h1>
-  <p class="subheading">Join our inner circle for private invitations, founder letters, and exclusive offers.</p>
-
   <div class="form-wrap">
     <div class="klaviyo-form-X3kaev"></div>
   </div>
@@ -1428,9 +1425,6 @@ app.get('/signup', (req, res) => {
       alt="Nazeerah"
     />
   </div>
-
-  <h1 class="heading">Welcome</h1>
-  <p class="subheading">Join our inner circle for private invitations, founder letters, and exclusive offers.</p>
 
   <div class="form-wrap">
     <div class="klaviyo-form-TfGCcx"></div>
