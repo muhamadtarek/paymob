@@ -134,6 +134,34 @@ async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
 }
 // ==================== SHOPIFY FUNCTIONS ====================
 
+
+// ==================== EMAIL FUNCTIONS ====================
+
+async function sendShopifyOrderConfirmation(shopifyOrderId) {
+  try {
+      await axios.post(
+          `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}/send_fulfillment_receipt.json`,
+          {},
+          { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+      );
+      console.log(`📧 Fulfillment receipt sent for order ${shopifyOrderId}`);
+  } catch (err) {
+      console.error('Fulfillment receipt error:', err?.response?.data || err.message);
+  }
+
+  // Also send the order confirmation email
+  try {
+      await axios.post(
+          `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}/send_invoice.json`,
+          {},
+          { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+      );
+      console.log(`📧 Order invoice sent for order ${shopifyOrderId}`);
+  } catch (err) {
+      console.error('Order invoice error:', err?.response?.data || err.message);
+  }
+}
+
 /**
  * Validate a Shopify discount code against the Price Rules API.
  * Returns discount metadata + calculated discountAmount in EGP.
@@ -487,6 +515,9 @@ app.post('/api/checkout/egypt', async (req, res) => {
                       ]}},
                       { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                   );
+
+                  sendShopifyOrderConfirmation(shopifyOrderId)
+                  .catch(err => console.error('Confirmation email error:', err.message));
               }
       
               const codRedirectUrl =
@@ -582,6 +613,9 @@ app.post('/api/paymob/callback', async (req, res) => {
                     ]}},
                     { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                 );
+
+                sendShopifyOrderConfirmation(shopifyOrderId)
+                .catch(err => console.error('Confirmation email error:', err.message));
             }
 
             console.log(`✅ Order ${shopifyDraftOrderId} completed successfully (method: ${method})`);
