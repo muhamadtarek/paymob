@@ -137,24 +137,64 @@ async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
 
 // ==================== EMAIL FUNCTIONS ====================
 
-async function sendShopifyOrderConfirmation(shopifyOrderId, customerEmail) {
+// ==================== EMAIL FUNCTIONS ====================
+
+async function sendOrderConfirmationEmail({ email, firstName, lastName, orderNumber, totalAmount, items }) {
+  const apiKey = process.env.KLAVIYO_API_KEY;
+  if (!apiKey) {
+      console.error('❌ Missing KLAVIYO_API_KEY');
+      return;
+  }
+
+  const headers = {
+      'Authorization': `Klaviyo-API-Key ${apiKey}`,
+      'revision': '2024-02-15',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+  };
+
   try {
-      // Re-trigger the built-in "Order Confirmation" notification
       const res = await axios.post(
-          `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}/send_invoice.json`,
-          {},
-          { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+          'https://a.klaviyo.com/api/events/',
+          {
+              data: {
+                  type: 'event',
+                  attributes: {
+                      profile: {
+                          data: {
+                              type: 'profile',
+                              attributes: {
+                                  email,
+                                  first_name: firstName || '',
+                                  last_name: lastName || ''
+                              }
+                          }
+                      },
+                      metric: {
+                          data: {
+                              type: 'metric',
+                              attributes: {
+                                  name: 'Order Confirmation'
+                              }
+                          }
+                      },
+                      properties: {
+                          order_number: orderNumber,
+                          total_amount: totalAmount,
+                          items: items || [],
+                          currency: 'EGP'
+                      },
+                      value: totalAmount
+                  }
+              }
+          },
+          { headers }
       );
-      console.log(`📧 Sent to ${customerEmail}:`, res.status);
+      console.log(`📧 Order confirmation event sent to Klaviyo for order #${orderNumber}`, res.status);
   } catch (err) {
-      console.error('❌ Email failed:', err?.response?.data || err.message);
-      // Log the full error so we can see exactly what Shopify returns
-      if (err?.response?.data) {
-          console.error('Shopify response:', JSON.stringify(err.response.data, null, 2));
-      }
+      console.error('❌ Klaviyo order confirmation failed:', err?.response?.data || err.message);
   }
 }
-
 /**
  * Validate a Shopify discount code against the Price Rules API.
  * Returns discount metadata + calculated discountAmount in EGP.
@@ -508,9 +548,15 @@ app.post('/api/checkout/egypt', async (req, res) => {
                       ]}},
                       { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                   );
-
-                  sendShopifyOrderConfirmation(shopifyOrderId,  customer.email)
-                  .catch(err => console.error('Confirmation email error:', err.message));
+                    // 📧 Send confirmation via Klaviyo
+                    sendOrderConfirmationEmail({
+                      email: customer.email,
+                      firstName: customer.firstName || customer.first_name,
+                      lastName: customer.lastName || customer.last_name,
+                      orderNumber: shopifyOrderNumber,
+                      totalAmount: totalAmount,
+                      items: cartItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price }))
+                  }).catch(err => console.error('Confirmation email error:', err.message));
               }
       
               const codRedirectUrl =
@@ -596,6 +642,16 @@ app.post('/api/paymob/callback', async (req, res) => {
             const shopifyOrderId = completeRes.data?.draft_order?.order_id;
 
             if (shopifyOrderId) {
+
+                const orderRes = await axios.get(
+                    `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
+                    { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+                );
+                const shopifyOrder = orderRes.data?.order;
+                const shopifyOrderNumber = shopifyOrder?.order_number || shopifyOrderId;
+                const customerEmail = shopifyOrder?.email || data.order?.email;
+
+
                 await axios.put(
                     `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
                     { order: { id: shopifyOrderId, note_attributes: [
@@ -607,8 +663,16 @@ app.post('/api/paymob/callback', async (req, res) => {
                     { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                 );
 
-                sendShopifyOrderConfirmation(shopifyOrderId, data.order.email)
-                .catch(err => console.error('Confirmation email error:', err.message));
+                // 📧 Send confirmation via Klaviyo
+                sendOrderConfirmationEmail({
+                  email: customerEmail,
+                  firstName: shopifyOrder?.customer?.first_name || '',
+                  lastName: shopifyOrder?.customer?.last_name || '',
+                  orderNumber: shopifyOrderNumber,
+                  totalAmount: shopifyOrder?.total_price || 0,
+                  items: (shopifyOrder?.line_items || []).map(i => ({ name: i.title, quantity: i.quantity, price: i.price }))
+              }).catch(err => console.error('Confirmation email error:', err.message));
+
             }
 
             console.log(`✅ Order ${shopifyDraftOrderId} completed successfully (method: ${method})`);
