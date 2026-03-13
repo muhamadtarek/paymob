@@ -460,7 +460,7 @@ app.post('/api/checkout/egypt', async (req, res) => {
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
             const codRedirectUrl =
                 process.env.COD_SUCCESS_URL ||
-                (process.env.FRONTEND_URL && `${process.env.FRONTEND_URL.replace(/\/$/, '')}/cod-thank-you?draft=${draftOrder.id}`) ||
+                (process.env.FRONTEND_URL && `${process.env.FRONTEND_URL.replace(/\/$/, '')}/pages/thank-you?order=${draftOrder.id}`) ||
                 '/';
 
             try {
@@ -586,7 +586,7 @@ app.post('/api/paymob/callback', async (req, res) => {
 
 app.get('/api/checkout/success', (req, res) => {
     const { order_id } = req.query;
-    res.redirect(`${process.env.FRONTEND_URL}/thank-you?order=${order_id}`);
+    res.redirect(`${process.env.FRONTEND_URL}/pages/thank-you?order=${order_id}`);
 });
 
 // ==================== CHECKOUT PAGE HTML ====================
