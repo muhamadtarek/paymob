@@ -458,39 +458,49 @@ app.post('/api/checkout/egypt', async (req, res) => {
         }).catch(err => console.error('Klaviyo subscribe error:', err?.response?.data || err.message));
 
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
-            const codRedirectUrl =
-                process.env.COD_SUCCESS_URL ||
-                (process.env.FRONTEND_URL && `${process.env.FRONTEND_URL.replace(/\/$/, '')}/pages/thank-you?order=${draftOrder.id}`) ||
-                '/';
-
-            try {
-                const completeRes = await axios.put(
-                    `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
-                    { payment_pending: true },
-                    { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
-                );
-
-                const shopifyOrderId = completeRes.data?.draft_order?.order_id;
-
-                if (shopifyOrderId) {
-                    await axios.put(
-                        `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
-                        { order: { id: shopifyOrderId, note_attributes: [
-                            { name: 'payment_method', value: 'cod' },
-                            { name: 'is_cod', value: 'true' },
-                            { name: 'is_card', value: 'false' },
-                            { name: 'is_wallet', value: 'false' }
-                        ]}},
-                        { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
-                    );
-                }
-
-                return res.json({ success: true, cod: true, shopifyDraftOrderId: draftOrder.id, shopifyOrderId, redirectUrl: codRedirectUrl });
-            } catch (e) {
-                console.error('Error completing COD draft order:', e.response?.data || e.message);
-                return res.status(500).json({ success: false, error: 'Failed to complete COD order in Shopify' });
-            }
-        }
+          try {
+              const completeRes = await axios.put(
+                  `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/draft_orders/${draftOrder.id}/complete.json`,
+                  { payment_pending: true },
+                  { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+              );
+      
+              const shopifyOrderId = completeRes.data?.draft_order?.order_id;
+              let shopifyOrderNumber = draftOrder.id; // fallback
+      
+              if (shopifyOrderId) {
+                  // Fetch the real order to get the order_number (e.g. 1234)
+                  const orderRes = await axios.get(
+                      `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
+                      { headers: { 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+                  );
+                  shopifyOrderNumber = orderRes.data?.order?.order_number || shopifyOrderId;
+      
+                  // Tag the order with payment method
+                  await axios.put(
+                      `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}.json`,
+                      { order: { id: shopifyOrderId, note_attributes: [
+                          { name: 'payment_method', value: 'cod' },
+                          { name: 'is_cod', value: 'true' },
+                          { name: 'is_card', value: 'false' },
+                          { name: 'is_wallet', value: 'false' }
+                      ]}},
+                      { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
+                  );
+              }
+      
+              const codRedirectUrl =
+                  process.env.COD_SUCCESS_URL ||
+                  (process.env.FRONTEND_URL && `${process.env.FRONTEND_URL.replace(/\/$/, '')}/pages/thank-you?order_number=${shopifyOrderNumber}`) ||
+                  '/';
+      
+              return res.json({ success: true, cod: true, shopifyDraftOrderId: draftOrder.id, shopifyOrderId, redirectUrl: codRedirectUrl });
+      
+          } catch (e) {
+              console.error('Error completing COD draft order:', e.response?.data || e.message);
+              return res.status(500).json({ success: false, error: 'Failed to complete COD order in Shopify' });
+          }
+      }
 
         const authToken = await paymobAuthenticate();
 
