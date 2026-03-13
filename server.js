@@ -549,14 +549,20 @@ app.post('/api/checkout/egypt', async (req, res) => {
                       { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                   );
                     // 📧 Send confirmation via Klaviyo
-                    sendOrderConfirmationEmail({
-                      email: customer.email,
-                      firstName: customer.firstName || customer.first_name,
-                      lastName: customer.lastName || customer.last_name,
-                      orderNumber: shopifyOrderNumber,
-                      totalAmount: totalAmount,
-                      items: cartItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price }))
-                  }).catch(err => console.error('Confirmation email error:', err.message));
+                    // With this — await it so we can see if it fails:
+                    try {
+                      await sendOrderConfirmationEmail({
+                          email: customer.email,
+                          firstName: customer.firstName || customer.first_name,
+                          lastName: customer.lastName || customer.last_name,
+                          orderNumber: shopifyOrderNumber,
+                          totalAmount: totalAmount,
+                          items: cartItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price }))
+                      });
+                      console.log('✅ Klaviyo order confirmation event fired');
+                    } catch (err) {
+                      console.error('❌ Klaviyo email error:', err?.response?.data || err.message);
+                    }
               }
       
               const codRedirectUrl =
@@ -1520,67 +1526,30 @@ app.get('/signup', (req, res) => {
 });
 
 // ==================== TEST EMAIL ENDPOINT ====================
-app.get('/api/test-email', async (req, res) => {
-  const apiKey = process.env.KLAVIYO_API_KEY;
-  const testEmail = req.query.email || 'test@example.com';
-
-  if (!apiKey) {
-      return res.json({ error: 'Missing KLAVIYO_API_KEY' });
-  }
-
-  const headers = {
-      'Authorization': `Klaviyo-API-Key ${apiKey}`,
-      'revision': '2024-02-15',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-  };
+app.get('/api/test-order-email', async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.json({ error: 'Pass ?email=your@email.com' });
 
   try {
-      const res2 = await axios.post(
-          'https://a.klaviyo.com/api/events/',
-          {
-              data: {
-                  type: 'event',
-                  attributes: {
-                      profile: {
-                          data: {
-                              type: 'profile',
-                              attributes: { email: testEmail }
-                          }
-                      },
-                      metric: {
-                          data: {
-                              type: 'metric',
-                              attributes: { name: 'Order Confirmation' }
-                          }
-                      },
-                      properties: {
-                          order_number: 9999,
-                          total_amount: 1500,
-                          currency: 'EGP'
-                      },
-                      value: 1500
-                  }
-              }
-          },
-          { headers }
-      );
+      await sendOrderConfirmationEmail({
+          email,
+          firstName: 'Test',
+          lastName: 'User',
+          orderNumber: 1234,
+          totalAmount: 1500,
+          items: [{ name: 'Test Item', quantity: 1, price: 1400 }]
+      });
       return res.json({ 
           success: true, 
-          status: res2.status, 
-          data: res2.data,
-          note: 'Event sent to Klaviyo. Now check Klaviyo → Analytics → Metrics → Order Confirmation to confirm it arrived.'
+          message: `Event fired for ${email}. If flow is Live in Klaviyo, email should arrive within 1 minute.`
       });
   } catch (err) {
-      return res.json({
-          success: false,
-          status: err?.response?.status,
-          error: err?.response?.data || err.message,
-          apiKeyPreview: apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING'
+      return res.json({ 
+          success: false, 
+          error: err?.response?.data || err.message 
       });
   }
 });
-
 
 
 const PORT = process.env.PORT || 3000;
