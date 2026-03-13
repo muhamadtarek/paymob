@@ -137,28 +137,21 @@ async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
 
 // ==================== EMAIL FUNCTIONS ====================
 
-async function sendShopifyOrderConfirmation(shopifyOrderId) {
+async function sendShopifyOrderConfirmation(shopifyOrderId, customerEmail) {
   try {
-      await axios.post(
-          `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}/send_fulfillment_receipt.json`,
-          {},
-          { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
-      );
-      console.log(`📧 Fulfillment receipt sent for order ${shopifyOrderId}`);
-  } catch (err) {
-      console.error('Fulfillment receipt error:', err?.response?.data || err.message);
-  }
-
-  // Also send the order confirmation email
-  try {
-      await axios.post(
+      // Re-trigger the built-in "Order Confirmation" notification
+      const res = await axios.post(
           `https://${process.env.SHOPIFY_STORE_DOMAIN}/admin/api/2025-01/orders/${shopifyOrderId}/send_invoice.json`,
           {},
           { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
       );
-      console.log(`📧 Order invoice sent for order ${shopifyOrderId}`);
+      console.log(`📧 Sent to ${customerEmail}:`, res.status);
   } catch (err) {
-      console.error('Order invoice error:', err?.response?.data || err.message);
+      console.error('❌ Email failed:', err?.response?.data || err.message);
+      // Log the full error so we can see exactly what Shopify returns
+      if (err?.response?.data) {
+          console.error('Shopify response:', JSON.stringify(err.response.data, null, 2));
+      }
   }
 }
 
@@ -516,7 +509,7 @@ app.post('/api/checkout/egypt', async (req, res) => {
                       { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                   );
 
-                  sendShopifyOrderConfirmation(shopifyOrderId)
+                  sendShopifyOrderConfirmation(shopifyOrderId,  customer.email)
                   .catch(err => console.error('Confirmation email error:', err.message));
               }
       
@@ -614,7 +607,7 @@ app.post('/api/paymob/callback', async (req, res) => {
                     { headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': process.env.SHOPIFY_ADMIN_ACCESS_TOKEN } }
                 );
 
-                sendShopifyOrderConfirmation(shopifyOrderId)
+                sendShopifyOrderConfirmation(shopifyOrderId, data.order.email)
                 .catch(err => console.error('Confirmation email error:', err.message));
             }
 
