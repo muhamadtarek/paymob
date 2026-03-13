@@ -1519,6 +1519,69 @@ app.get('/signup', (req, res) => {
 </html>`);
 });
 
+// ==================== TEST EMAIL ENDPOINT ====================
+app.get('/api/test-email', async (req, res) => {
+  const apiKey = process.env.KLAVIYO_API_KEY;
+  const testEmail = req.query.email || 'test@example.com';
+
+  if (!apiKey) {
+      return res.json({ error: 'Missing KLAVIYO_API_KEY' });
+  }
+
+  const headers = {
+      'Authorization': `Klaviyo-API-Key ${apiKey}`,
+      'revision': '2024-02-15',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+  };
+
+  try {
+      const res2 = await axios.post(
+          'https://a.klaviyo.com/api/events/',
+          {
+              data: {
+                  type: 'event',
+                  attributes: {
+                      profile: {
+                          data: {
+                              type: 'profile',
+                              attributes: { email: testEmail }
+                          }
+                      },
+                      metric: {
+                          data: {
+                              type: 'metric',
+                              attributes: { name: 'Order Confirmation' }
+                          }
+                      },
+                      properties: {
+                          order_number: 9999,
+                          total_amount: 1500,
+                          currency: 'EGP'
+                      },
+                      value: 1500
+                  }
+              }
+          },
+          { headers }
+      );
+      return res.json({ 
+          success: true, 
+          status: res2.status, 
+          data: res2.data,
+          note: 'Event sent to Klaviyo. Now check Klaviyo → Analytics → Metrics → Order Confirmation to confirm it arrived.'
+      });
+  } catch (err) {
+      return res.json({
+          success: false,
+          status: err?.response?.status,
+          error: err?.response?.data || err.message,
+          apiKeyPreview: apiKey ? apiKey.substring(0, 8) + '...' : 'MISSING'
+      });
+  }
+});
+
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
