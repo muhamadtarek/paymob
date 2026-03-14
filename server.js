@@ -137,10 +137,14 @@ async function klaviyoSubscribe({ email, firstName, lastName, newsletter }) {
 
 // ==================== EMAIL FUNCTIONS ====================
 
+// ==================== EMAIL FUNCTIONS ====================
 
 async function sendOrderConfirmationEmail({ email, firstName, lastName, orderNumber, totalAmount, items }) {
   const apiKey = process.env.KLAVIYO_API_KEY;
-  if (!apiKey) { console.error('❌ Missing KLAVIYO_API_KEY'); return; }
+  if (!apiKey) {
+      console.error('❌ Missing KLAVIYO_API_KEY');
+      return;
+  }
 
   const headers = {
       'Authorization': `Klaviyo-API-Key ${apiKey}`,
@@ -149,32 +153,8 @@ async function sendOrderConfirmationEmail({ email, firstName, lastName, orderNum
       'Accept': 'application/json'
   };
 
-  // Step 1: Upsert profile with transactional consent
   try {
-      await axios.post(
-          'https://a.klaviyo.com/api/profiles/',
-          {
-              data: {
-                  type: 'profile',
-                  attributes: {
-                      email,
-                      first_name: firstName || '',
-                      last_name: lastName || ''
-                  }
-              }
-          },
-          { headers }
-      );
-  } catch (err) {
-      // 409 = profile already exists, that's fine
-      if (err?.response?.status !== 409) {
-          console.error('Profile upsert error:', err?.response?.data || err.message);
-      }
-  }
-
-  // Step 2: Fire the Order Confirmation event
-  try {
-      await axios.post(
+      const res = await axios.post(
           'https://a.klaviyo.com/api/events/',
           {
               data: {
@@ -193,7 +173,9 @@ async function sendOrderConfirmationEmail({ email, firstName, lastName, orderNum
                       metric: {
                           data: {
                               type: 'metric',
-                              attributes: { name: 'Order Confirmation' }
+                              attributes: {
+                                  name: 'Order Confirmation'
+                              }
                           }
                       },
                       properties: {
@@ -208,13 +190,11 @@ async function sendOrderConfirmationEmail({ email, firstName, lastName, orderNum
           },
           { headers }
       );
-      console.log(`📧 Order confirmation event sent for order #${orderNumber} to ${email}`);
+      console.log(`📧 Order confirmation event sent to Klaviyo for order #${orderNumber}`, res.status);
   } catch (err) {
-      console.error('❌ Klaviyo event failed:', err?.response?.data || err.message);
-      throw err;
+      console.error('❌ Klaviyo order confirmation failed:', err?.response?.data || err.message);
   }
 }
-
 /**
  * Validate a Shopify discount code against the Price Rules API.
  * Returns discount metadata + calculated discountAmount in EGP.
