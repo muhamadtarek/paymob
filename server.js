@@ -530,13 +530,17 @@ app.post('/api/checkout/egypt', async (req, res) => {
 
         const draftOrder = await createDraftOrder(cartItems, customer, totalAmount, appliedDiscount || null);
 
-        // Subscribe to Klaviyo — fire-and-forget (never blocks checkout)
-        klaviyoSubscribe({
-            email:     customer.email,
-            firstName: customer.firstName || customer.first_name,
-            lastName:  customer.lastName  || customer.last_name,
-            newsletter: req.body.newsletter  // true | false from frontend checkbox
-        }).catch(err => console.error('Klaviyo subscribe error:', err?.response?.data || err.message));
+        // Subscribe to Klaviyo only if newsletter checkbox was checked
+        if (req.body.newsletter === true || req.body.newsletter === 'true') {
+          klaviyoSubscribe({
+              email:     customer.email,
+              firstName: customer.firstName || customer.first_name,
+              lastName:  customer.lastName  || customer.last_name,
+              newsletter: true
+          }).catch(err => console.error('Klaviyo subscribe error:', err?.response?.data || err.message));
+        } else {
+          console.log('📭 Newsletter opt-in not checked — skipping Klaviyo subscribe');
+        }
 
         if (String(paymobMethod || '').toLowerCase() === 'cod') {
           try {
